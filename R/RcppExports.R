@@ -2,18 +2,18 @@
 # Generator token: 10BE3573-1514-4C36-9D1C-5A225CD40393
 
 rebuildTreeRecurse_cpp <- function(tree_mat1, lower1, upper1, rowind, tree_mat) {
-    .Call('_ARBART_rebuildTreeRecurse_cpp', PACKAGE = 'ARBART', tree_mat1, lower1, upper1, rowind, tree_mat)
+    .Call(`_ARBART_rebuildTreeRecurse_cpp`, tree_mat1, lower1, upper1, rowind, tree_mat)
 }
 
 rebuildTree2_cpp <- function(tree_mat) {
-    .Call('_ARBART_rebuildTree2_cpp', PACKAGE = 'ARBART', tree_mat)
+    .Call(`_ARBART_rebuildTree2_cpp`, tree_mat)
 }
 
 getPredictionsForTreeRecursive_cpp <- function(outputF, gobool, x_mat) {
-    .Call('_ARBART_getPredictionsForTreeRecursive_cpp', PACKAGE = 'ARBART', outputF, gobool, x_mat)
+    .Call(`_ARBART_getPredictionsForTreeRecursive_cpp`, outputF, gobool, x_mat)
 }
 
 getPredictionsRangesForTree3_cpp <- function(tree_mat, x_mat) {
-    .Call('_ARBART_getPredictionsRangesForTree3_cpp', PACKAGE = 'ARBART', tree_mat, x_mat)
+    .Call(`_ARBART_getPredictionsRangesForTree3_cpp`, tree_mat, x_mat)
 }
 

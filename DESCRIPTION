@@ -15,4 +15,9 @@ LinkingTo:
     Rcpp,
     RcppArmadillo
 Imports: 
-    Rcpp
+    Rcpp,
+    truncnorm, 
+    mvtnorm, 
+    dbarts
+Depends: 
+    R (>= 2.10)
