@@ -916,12 +916,12 @@ ARProbitbartNOCovars_fullcond <- function(y.train = NULL,
   mu <- mutemp
 
 
-  print("line 919")
-  print("sampler$data@x = ")
-  print(sampler$data@x)
+  # print("line 919")
+  # print("sampler$data@x = ")
+  # print(sampler$data@x)
 
-  print("Zlag.mat= ")
-  print(Zlag.mat)
+  # print("Zlag.mat= ")
+  # print(Zlag.mat)
 
 
   # print("df_for_dbart = ")
@@ -1073,8 +1073,10 @@ ARProbitbartNOCovars_fullcond <- function(y.train = NULL,
 
       # sampler$predict(x.test = as.matrix(Z.vec[100]), offset.test = NULL)[1:num_indiv]
       #
-      # testpredvec <- sampler$predict(x.test = as.matrix(tempbind[1,]), offset.test = NULL)[1:num_indiv]
-
+      # testpredvec <- sampler$predict(x.test = as.matrix(rep(tempbind[1,1],100)), offset.test = NULL)[1:num_indiv]
+      #
+      # print("line 1078 testpredvec from predict = ")
+      # print(testpredvec)
 
       list_inter_mats <- list()
 
@@ -1109,7 +1111,7 @@ ARProbitbartNOCovars_fullcond <- function(y.train = NULL,
 
       testpredvec <- (testpredvec + 0.5)*(max_resp - min_resp) + min_resp
 
-      # print("testpredvec = ")
+      # print("line 1112 testpredvec from mat rescaled  = ")
       # print(testpredvec)
     }else{
       testpredvec <- sampler$predict(x.test = as.matrix(temp_test_mat), offset.test = NULL)
@@ -2054,6 +2056,16 @@ ARProbitbartNOCovars_fullcond <- function(y.train = NULL,
 
           temp_mean2_origscale <- (temp_mean2 + 0.5)*(max_resp - min_resp) + min_resp
 
+          # temp_mean2_debug <- sampler$predict(x.test = as.matrix(rep(temp_ztpmin1,100)), offset.test = NULL)[1:num_indiv]
+          #
+          # print("line 2061 temp_mean2_debug from predict = ")
+          # print(temp_mean2_debug)
+          #
+          # print("line 2061 temp_mean2_origscale = ")
+          # print(temp_mean2_origscale)
+
+
+
           # temp_lower0 <- (temp_region_probs[region_ind, 2] + 0.5)*(max_resp - min_resp) + min_resp
           # temp_upper0 <- (temp_region_probs[region_ind, 3] + 0.5)*(max_resp - min_resp) + min_resp
 
@@ -2176,6 +2188,16 @@ ARProbitbartNOCovars_fullcond <- function(y.train = NULL,
         # CHECK IF THESE BOUNDS ARE CORRECTLY DEFINED
 
         temp_mean2_origscale <- (temp_mean2 + 0.5)*(max_resp - min_resp) + min_resp
+
+        # temp_mean2_debug <- sampler$predict(x.test = as.matrix(rep(temp_ztpmin1,100)), offset.test = NULL)[1:num_indiv]
+        #
+        # print("line 2194 temp_mean2_debug from predict = ")
+        # print(temp_mean2_debug)
+        #
+        # print("line 2061 temp_mean2_origscale = ")
+        # print(temp_mean2_origscale)
+
+
 
         temp_lower0 <- temp_lower3 # (temp_lower3 + 0.5)*(max_resp - min_resp) + min_resp
         temp_upper0 <- temp_upper3 # (temp_upper3 + 0.5)*(max_resp - min_resp) + min_resp
@@ -2597,6 +2619,16 @@ ARProbitbartNOCovars_fullcond <- function(y.train = NULL,
 
 
         testpredvec <- (testpredvec + 0.5)*(max_resp - min_resp) + min_resp
+
+
+        # temp_mean2_debug <- sampler$predict(x.test = as.matrix(rep(as.matrix(tempbind[1,1]),100)),
+        #                                     offset.test = NULL)[1:num_indiv]
+        #
+        # print("line 2194 temp_mean2_debug from predict = ")
+        # print(temp_mean2_debug)
+        #
+        # print("line 2061 testpredvec = ")
+        # print(testpredvec)
 
       }else{
         testpredvec <- sampler$predict(x.test = as.matrix(temp_test_mat), offset.test = NULL)
