@@ -822,10 +822,10 @@ ARPbartX_fullcond <- function(y.train = NULL,
 
     # draw$mu_test[,1] <- samplestemp$test[,1]
     if(keep_zmat==TRUE){
-      draw$Z.mat.test[,,1]  <- matrix(data = as.vector(temp_test_preds), nrow = num_indiv, ncol = num_test_periods)
+      draw$Z.mat.test[,,1]  <- t(matrix(data = as.vector(temp_test_preds), nrow = num_indiv, ncol = num_test_periods))
     }
   }
-  # print("Line 442")
+  # print("Line 828")
 
 
   ##################### Begin Gibbs sampler ##################################################
@@ -838,6 +838,14 @@ ARPbartX_fullcond <- function(y.train = NULL,
 
   # for(iter in 2:(n.burnin + n.iter)){
   while( iter <= (n.burnin + n.iter) ){
+
+    # print("line 842")
+    # print("iter = ")
+    # print(iter)
+
+    if(iter > n.burnin){
+      iter_min_burnin <- iter - n.burnin
+    }
 
 
     # print("Line 454")
@@ -931,7 +939,7 @@ ARPbartX_fullcond <- function(y.train = NULL,
 
     num_regions <- nrow(intersectmat)
 
-    # print("Line 1169")
+    # print("Line 937")
 
     for(z_iter_ind in 1:num_z_iters){
 
@@ -2023,6 +2031,10 @@ ARPbartX_fullcond <- function(y.train = NULL,
 
       } # end loop over individuals indiv in 1:num_indiv
 
+      # print("line 1288")
+      # print("z_iter_ind = ")
+      # print(z_iter_ind)
+
     } # end loop over z_iter_ind
 
 
@@ -2141,7 +2153,7 @@ ARPbartX_fullcond <- function(y.train = NULL,
 
     breakcount <- 0
 
-    # print("Line 1475")
+    # print("Line 2147")
 
     ##################### Sample sum-of-trees ##################################################
 
@@ -2223,15 +2235,20 @@ ARPbartX_fullcond <- function(y.train = NULL,
     if(iter > n.burnin){
       # store value at this iteration
       if(keep_zmat==TRUE){
-        draw$Z.mat[,,iter] = Z.mat
-        draw$Z.mat.test[,,iter] = Z.mat.test
+        # print("line 2230")
+
+        draw$Z.mat[,,iter_min_burnin] = Z.mat
+
+        # print("line 2234")
+
+        draw$Z.mat.test[,,iter_min_burnin] = Z.mat.test
       }
-      # draw$alpha[,iter] = alpha
-      # draw$beta[,iter] = beta
-      draw$mu[,,iter] = matrix(mu, nrow = num_indiv, ncol = n.time_train) # mu
-      draw$prob.train.draws[,,iter] = pnorm(draw$mu[,,iter])
-      # draw$sigma2.alpha[iter] = sigma2.alpha
-      # draw$sigma2.beta[iter] = sigma2.beta
+      # draw$alpha[,iter_min_burnin] = alpha
+      # draw$beta[,iter_min_burnin] = beta
+      draw$mu[,,iter_min_burnin] = matrix(mu, nrow = num_indiv, ncol = n.time_train) # mu
+      draw$prob.train.draws[,,iter_min_burnin] = pnorm(draw$mu[,,iter_min_burnin])
+      # draw$sigma2.alpha[iter_min_burnin] = sigma2.alpha
+      # draw$sigma2.beta[iter_min_burnin] = sigma2.beta
     }
 
 
@@ -2614,13 +2631,13 @@ ARPbartX_fullcond <- function(y.train = NULL,
 
 
       if(iter > n.burnin){
-        draw$mu_test[,,iter] <- matrix(temp_mu_test, nrow = num_indiv, ncol = num_test_periods) # temp_mu_test
-        draw$prob.test.draws[,,iter] <- pnorm(draw$mu_test[,,iter])
-        # draw$mu_test[,iter] <- samplestemp$test[,1]
+        draw$mu_test[,,iter_min_burnin] <- matrix(temp_mu_test, nrow = num_indiv, ncol = num_test_periods) # temp_mu_test
+        draw$prob.test.draws[,,iter_min_burnin] <- pnorm(draw$mu_test[,,iter_min_burnin])
+        # draw$mu_test[,iter_min_burnin] <- samplestemp$test[,1]
 
         if(keep_zmat==TRUE){
-          # draw$Z.mat.test[,,iter]  <- matrix(data = as.vector(temp_test_preds), nrow = n.item, ncol = n.ranker*num_test_periods)
-          draw$Z.mat.test[,,iter]  <- matrix(data = as.vector(temp_test_preds), nrow = num_indiv, ncol = num_test_periods)
+          # draw$Z.mat.test[,,iter_min_burnin]  <- matrix(data = as.vector(temp_test_preds), nrow = n.item, ncol = n.ranker*num_test_periods)
+          draw$Z.mat.test[,,iter_min_burnin]  <- matrix(data = as.vector(temp_test_preds), nrow = num_indiv, ncol = num_test_periods)
 
         }
       }

@@ -4,11 +4,10 @@
 <!-- badges: start -->
 <!-- badges: end -->
 
-The goal of ARBART is to implement autoregressive Bayesian Additive Regression Tree Models for Limited Dependent Vairables (AR binary Probit BART, AR Ordered Probit BART, AR Tobit BART)
+The goal of ARBART is to implement autoregressive Bayesian Additive Regression Tree Models for Limited Dependent Variables (AR binary Probit BART, AR Ordered Probit BART, AR Tobit BART)
 
 ## Installation
 
-You can install the development version of ARBART like so:
 
 ``` r
 library(devtools)
