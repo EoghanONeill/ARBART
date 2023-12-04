@@ -1,13 +1,14 @@
 
 
-#' Auto-regressive Probit BART Model with exogenous covariates
+
+#' Auto-regressive Ordered Probit BART Model with exogenous covariates
 #'
-#' Auto-regressive (of order one) Probit BART Model with exogenous covariates
+#' Auto-regressive (of order one) Ordered Probit BART Model with exogenous covariates
 #' @import truncnorm
 #' @import mvtnorm
 #' @import dbarts
 #' @importFrom Rcpp evalCpp
-#' @param y.train A vector (or matrix for panel data) of binary outcomes. Rows correspond to time periods, columns correspond to variables.
+#' @param y.train A vector (or matrix for panel data) of ordered integer outcomes. Rows correspond to time periods, columns correspond to variables.
 #' @param X.train A training data matrix with rows corresponding to time-individual specific observations and columns corresponding to variables. The first ncol(y.train) rows are for all individuals in the first time period, then rows ncol(y.train) to 2*ncol(y.train) are for all individuals in the next time period, and so on.
 #' @param X.testing A test data matrix with rows corresponding to time-individual units and columns corresponding to variables. The first ncol(y.train) rows are for all individuals in the first test period, then rows ncol(y.train) to 2*ncol(y.train) are for all individuals in the next test period, and so on.
 #' @param n.iter Number of iterations excluding burnin.
@@ -37,7 +38,7 @@
 #' \item{Z.mat.test}{Samples from the posterior of the latent scores for test observations. Dimensions c(num_test_periods, num_indiv, n.iter).}
 #' @useDynLib ARBART, .registration = TRUE
 #' @export
-ARPbartX_fullcond <- function(y.train = NULL,
+AROrdPbartX_fullcond <- function(y.train = NULL,
                               X.train = matrix(NA, nrow = nrow(y.train)*ncol(y.train), ncol = 0),
                               X.test = matrix(NA, nrow =0, ncol = 0),
                               n.iter=1000L,
@@ -84,9 +85,26 @@ ARPbartX_fullcond <- function(y.train = NULL,
 
   #check that input values are binary 0 or 1.
 
-  if(!(all(y.train %in% c(0,1)))){
-    stop("Input y.train values must be 0 or 1.")
+  if(!(all(is.integer(y.train)))){
+    stop("y.train contains non-integers")
   }
+
+  miny <- min(y.train)
+  maxy <- max(y.train)
+
+
+  num_categories <- maxy - miny + 1
+
+  if(!(all(y.train %in% miny:maxy))){
+    stop("!(all(y.train %in% miny:maxy))")
+  }
+
+  for(y_ind in miny:maxy){
+    if(sum(1*(y.train == y_ind) ) ==0){
+      stop("There are zero training obserations for an integer between the minimum and maximum outcome values. Redefine outcome or use different training data.")
+    }
+  }
+
 
 
   # check input covariates
@@ -124,6 +142,9 @@ ARPbartX_fullcond <- function(y.train = NULL,
   }
 
 
+  y.train <- as.matrix(y.train)
+
+  y.train_from1 <- y.train - miny + 1
 
 
 
@@ -153,8 +174,9 @@ ARPbartX_fullcond <- function(y.train = NULL,
     #if the x values do not vary over rankers, then there will only be n.item unique x values
     mu = array(NA, dim = c(num_indiv, n.time_train, n.iter)),#,
     mu_test = array(NA, dim = c(num_indiv , num_test_periods , n.iter)),
-    prob.train.draws = array(NA, dim = c(num_indiv, n.time_train, n.iter)),#,
-    prob.test.draws = array(NA, dim = c(num_indiv , num_test_periods , n.iter))
+    prob.train.draws = array(NA, dim = c(num_indiv, n.time_train, num_categories, n.iter)),#,
+    prob.test.draws = array(NA, dim = c(num_indiv , num_test_periods , num_categories, n.iter)),
+    thresholds = array(NA, dim = c(num_categories - 1 , n.iter))#,
     #
     #
     #can have mu of dimension n.item*n.ranker to operationalize rnanker-specific mu values, then need to edit gibbs update of Z
@@ -181,30 +203,74 @@ ARPbartX_fullcond <- function(y.train = NULL,
   # or take fixed values determined by truncation?
   # check standard probit BART initial values
 
-  # create offset
-  num_ones <- sum(y.train)
-  prop_ones <- mean(y.train)
+  # # create offset
+  # num_ones <- sum(y.train)
+  # prop_ones <- mean(y.train)
+  #
+  # offsetz <- qnorm(prop_ones)
 
-  offsetz <- qnorm(prop_ones)
+  offsetz <- 0 #qnorm(prop_ones)
 
-  # alternative: individual-specific offsets
-  if((indiv.offsets == TRUE)){
-    if(num_indiv > 1){
-      num_ones_vec <- apply(y.train,2,sum)
-      prop_ones_vec <- apply(y.train,2,mean)
-      offsetz_vec <- qnorm(prop_ones_vec) # rep(0,num_indiv) #
-    }else{
-      offsetz_vec <- rep(offsetz, num_indiv)
-      num_ones_vec <- as.vector(sum(y.train))
-      prop_ones_vec <- as.vector(mean(y.train))
-    }
+  offsetz_vec <- rep(offsetz, num_indiv)
+  num_ones_vec <- as.vector(sum(y.train))
+  prop_ones_vec <- as.vector(mean(y.train))
 
-  }else{
-    offsetz_vec <- rep(offsetz, num_indiv)
-    num_ones_vec <- as.vector(sum(y.train))
-    prop_ones_vec <- as.vector(mean(y.train))
-  }
+  # # alternative: individual-specific offsets
+  # if((indiv.offsets == TRUE)){
+  #   if(num_indiv > 1){
+  #     num_ones_vec <- apply(y.train,2,sum)
+  #     prop_ones_vec <- apply(y.train,2,mean)
+  #     offsetz_vec <- qnorm(prop_ones_vec) # rep(0,num_indiv) #
+  #   }else{
+  #     offsetz_vec <- rep(offsetz, num_indiv)
+  #     num_ones_vec <- as.vector(sum(y.train))
+  #     prop_ones_vec <- as.vector(mean(y.train))
+  #   }
+  #
+  # }else{
+  #   offsetz_vec <- rep(offsetz, num_indiv)
+  #   num_ones_vec <- as.vector(sum(y.train))
+  #   prop_ones_vec <- as.vector(mean(y.train))
+  # }
 
+
+
+  # Try naive pooled model (no dynamics, no covariates, just an intercept)
+  temp_ordprobMLE <- MASS::polr(ordered(y.train) ~ 1,
+                                method = "probit")
+
+  # MCMCpack multiplies thresholds by 0.588, This is not clear.
+  thresholds <- rep(NA, num_categories-1)
+  # thresholds[1] <- -Inf
+  thresholds[1] <- 0
+  # thresholds[num_categories+1] <- Inf
+  # thresholds[2:(num_categories-1)] <- temp_ordprobMLE$zeta[2:(num_categories-1)]
+
+  # since we set one threshold to for identification, demean by first threhsold from polr function
+  thresholds[2:(num_categories-1)] <- temp_ordprobMLE$zeta[2:(num_categories - 1)] - temp_ordprobMLE$zeta[1]
+
+
+  # ordinalbayes package uses something like
+  # alpha.precision <- 1/alpha.var
+  # coerce.precision <- 1/coerce.var
+  # alpha <- numeric()
+  # pi.0 <- table(Y)/length(Y)
+  # tab <- table(Y)
+  # alpha <- log(cumsum(pi.0)/(1 - cumsum(pi.0)))[1:(k - 1)]
+
+
+  # # takes proportions
+  # cat_props <- table(y.train)/length(y.train)
+  # # then inverse transform from empirical CDF to Z thresholds
+  # # and shift
+  # thresholds <- c(0,
+  #                 qnorm(cat_props)[1:(num_categories-1)])
+
+  # takes proportions
+  # then inverse transform from empirical CDF to Z thresholds
+  # and shift
+  # tempthresh <- qnorm(cumsum(table(y.train)/length(y.train)))
+  # thresholds <- (tempthresh - tempthresh[1])[1:(length(tempthresh)-1)]
 
 
 
@@ -223,16 +289,38 @@ ARPbartX_fullcond <- function(y.train = NULL,
   for(j in 1:num_indiv){
 
     #partly vectorized code
-    if((indiv.offsets == FALSE)|(num_indiv == 1)){
+    # if((indiv.offsets == FALSE)|(num_indiv == 1)){
+    Z.mat[y.train[,j]== miny,j] <- rtruncnorm(n = sum(y.train[,j]==miny),
+                                              a= -Inf,
+                                              b = 0,
+                                              mean = 0,#offsetz,
+                                              sd = 1)
 
-      Z.mat[y.train[,j]==1,j] <- rtruncnorm(sum(y.train[,j]), a= 0, b = Inf, mean = offsetz, sd = 1)
-      Z.mat[y.train[,j]==0,j] <- rtruncnorm(n.time_train - sum(y.train[,j]), a= -Inf, b = 0, mean = offsetz, sd = 1)
+    for(y_ind in (miny+1):(maxy-1)){
+      Z.mat[y.train[,j]== y_ind,j] <- rtruncnorm(n = sum(y.train[,j]== y_ind),
+                                                 a= thresholds[y_ind - miny],
+                                                 b = thresholds[y_ind - miny +1],
+                                                 mean = 0, #offsetz,
+                                                 sd = 1)
 
-    }else{
-
-      Z.mat[y.train[,j]==1,j] <- rtruncnorm(num_ones_vec[j], a= 0, b = Inf, mean = offsetz_vec[j], sd = 1)
-      Z.mat[y.train[,j]==0,j] <- rtruncnorm(n.time_train - num_ones_vec[j], a= -Inf , b = 0, mean = offsetz_vec[j], sd = 1)
     }
+
+
+    Z.mat[y.train[,j]==maxy,j] <- rtruncnorm(n = sum(y.train[,j] == maxy),
+                                             a= thresholds[num_categories-1],
+                                             b = Inf,
+                                             mean = 0, # offsetz,
+                                             sd = 1)
+
+
+    #   Z.mat[y.train[,j]==1,j] <- rtruncnorm(sum(y.train[,j]), a= 0, b = Inf, mean = offsetz, sd = 1)
+    #   Z.mat[y.train[,j]==0,j] <- rtruncnorm(n.time_train - sum(y.train[,j]), a= -Inf, b = 0, mean = offsetz, sd = 1)
+    #
+    # }else{
+    #
+    #   Z.mat[y.train[,j]==1,j] <- rtruncnorm(num_ones_vec[j], a= 0, b = Inf, mean = offsetz_vec[j], sd = 1)
+    #   Z.mat[y.train[,j]==0,j] <- rtruncnorm(n.time_train - num_ones_vec[j], a= -Inf , b = 0, mean = offsetz_vec[j], sd = 1)
+    # }
 
     # non-vectorized code
     # for(i in 1:(n.time_train)){
@@ -498,9 +586,12 @@ ARPbartX_fullcond <- function(y.train = NULL,
     # draw$alpha[,1] = alpha
     # draw$beta[,1] = beta
     draw$mu[, , 1] <- matrix(mu, nrow = num_indiv, ncol = n.time_train)
-    draw$prob.train.draws[, , 1] <- pnorm(draw$mu[, , 1])
+    draw$prob.train.draws[, , 1:num_categories, 1] <-
+      pnorm( outer( X = - draw$mu[, , 1],  Y =  c(thresholds, Inf ), FUN = "+")  ) -
+      pnorm( outer( X = - draw$mu[, , 1],  Y =  c(-Inf,thresholds ), FUN = "+")  )
     # draw$sigma2.alpha[1] = sigma2.alpha
     # draw$sigma2.beta[1] = sigma2.beta
+    draw$thresholds[,1] <- thresholds
   }
 
   # print("Line 954")
@@ -818,8 +909,9 @@ ARPbartX_fullcond <- function(y.train = NULL,
 
   if(n.burnin == 0){
     draw$mu_test[,,1] <- matrix(temp_mu_test, nrow = num_indiv, ncol = num_test_periods) #temp_mu_test
-    draw$prob.test.draws[,,1] <- pnorm(draw$mu_test[,,1])
-
+    draw$prob.test.draws[, , 1:num_categories, 1] <-
+      pnorm( outer( X = - draw$mu_test[, , 1],  Y =  c(thresholds, Inf ), FUN = "+")  ) -
+      pnorm( outer( X = - draw$mu_test[, , 1],  Y =  c(-Inf,thresholds ), FUN = "+")  )
     # draw$mu_test[,1] <- samplestemp$test[,1]
     if(keep_zmat==TRUE){
       draw$Z.mat.test[,,1]  <- t(matrix(data = as.vector(temp_test_preds), nrow = num_indiv, ncol = num_test_periods))
@@ -840,8 +932,8 @@ ARPbartX_fullcond <- function(y.train = NULL,
   while( iter <= (n.burnin + n.iter) ){
 
     # print("line 842")
-    # print("iter = ")
-    # print(iter)
+    print("iter = ")
+    print(iter)
 
     if(iter > n.burnin){
       iter_min_burnin <- iter - n.burnin
@@ -1154,7 +1246,7 @@ ARPbartX_fullcond <- function(y.train = NULL,
         # Create intervals from interval t+1 latent values
 
 
-        y_tp1 <- y.train[2,indiv]
+        y_tp1 <- y.train_from1[2,indiv]
 
 
         # rankvec_tp1 <- ranks_mat[,  1*n.ranker + indiv]
@@ -1203,7 +1295,7 @@ ARPbartX_fullcond <- function(y.train = NULL,
         #                                 n.item*(indiv - 1) +
         #                                 item_ind]
 
-        y_t <- y.train[1,indiv]
+        y_t <- y.train_from1[1,indiv]
 
 
         # rankvec_t <- ranks_mat[,  (1-1)*n.ranker + indiv]
@@ -1267,15 +1359,16 @@ ARPbartX_fullcond <- function(y.train = NULL,
 
 
 
-        if(y_t == 1){
-          temp_lower3 <- 0 # scalezero # 0
-          temp_upper3 <- Inf
-        }else{
-          temp_lower3 <- -Inf
-          temp_upper3 <- 0 # scalezero # 0
-        }
+        # if(y_t == 1){
+        #   temp_lower3 <- 0 # scalezero # 0
+        #   temp_upper3 <- Inf
+        # }else{
+        #   temp_lower3 <- -Inf
+        #   temp_upper3 <- 0 # scalezero # 0
+        # }
 
-
+        temp_lower3 <- c(-Inf,thresholds)[y_t] # scalezero # 0
+        temp_upper3 <- c(thresholds,Inf)[y_t]
 
 
 
@@ -1518,8 +1611,8 @@ ARPbartX_fullcond <- function(y.train = NULL,
           #   intersectmat <- list_item_intersectmats[[index_item]]
           #   intersectmat_tmin1 <- list_item_intersectmats_tmin1[[index_item]]
           # }else{
-            intersectmat <- Biglist_intersectmats[[t+1]]
-            intersectmat_tmin1 <- Biglist_intersectmats[[t]]
+          intersectmat <- Biglist_intersectmats[[t+1]]
+          intersectmat_tmin1 <- Biglist_intersectmats[[t]]
           # }
 
           num_regions <- nrow(intersectmat)
@@ -1578,17 +1671,18 @@ ARPbartX_fullcond <- function(y.train = NULL,
           # maybe pointless?
           # temp_lower nad temp_upper not used until updated below
 
-          y_tp1 <- y.train[t,indiv]
+          y_tp1 <- y.train_from1[t,indiv]
 
-          if(y_tp1 == 1){
-            temp_lower <- 0 # scalezero # 0
-            temp_upper <- Inf
-          }else{
-            temp_lower <- -Inf
-            temp_upper <- 0 # scalezero # 0
-          }
+          # if(y_tp1 == 1){
+          #   temp_lower <- 0 # scalezero # 0
+          #   temp_upper <- Inf
+          # }else{
+          #   temp_lower <- -Inf
+          #   temp_upper <- 0 # scalezero # 0
+          # }
 
-
+          temp_lower <- c(-Inf,thresholds)[y_tp1] # scalezero # 0
+          temp_lower <- c(thresholds,Inf)[y_tp1]
 
 
           # rankvec_tp1 <- ranks_mat[,  (t)*n.ranker + indiv]
@@ -1639,7 +1733,7 @@ ARPbartX_fullcond <- function(y.train = NULL,
           temp_ztp1 <- Z.vec[t*num_indiv +
                                indiv]
 
-          y_t <- y.train[t,indiv]
+          y_t <- y.train_from1[t,indiv]
 
 
           # if(any(order(rankvec_t) !=
@@ -1704,28 +1798,22 @@ ARPbartX_fullcond <- function(y.train = NULL,
 
 
 
-          if(y_t == 1){
-            temp_lower3 <- 0 # scalezero # 0
-            temp_upper3 <- Inf
-          }else{
-            temp_lower3 <- -Inf
-            temp_upper3 <- 0 # scalezero # 0
-          }
+          # if(y_t == 1){
+          #   temp_lower3 <- 0 # scalezero # 0
+          #   temp_upper3 <- Inf
+          # }else{
+          #   temp_lower3 <- -Inf
+          #   temp_upper3 <- 0 # scalezero # 0
+          # }
 
-
-
-
-
+          temp_lower3 <- c(-Inf,thresholds)[y_t] # scalezero # 0
+          temp_upper3 <- c(thresholds,Inf)[y_t]
 
 
           for(k_ind in 1:num_regions){
 
-
-
             # obtain mean for truncated normal distribution
             temp_mean <- intersectmat[k_ind, 1]
-
-
 
             # temp_tnorm_prob <- dtruncnorm(temp_ztp1,
             #                               a=temp_lower,
@@ -1857,7 +1945,6 @@ ARPbartX_fullcond <- function(y.train = NULL,
             temp_region_probs[k_ind, 2] <- temp_lower2
             temp_region_probs[k_ind, 3] <- temp_upper2
 
-
           }
 
 
@@ -1911,8 +1998,6 @@ ARPbartX_fullcond <- function(y.train = NULL,
         #### qkt for T ###################
 
 
-
-
         # if(itemcovars == TRUE){
         #   # list_item_intersectmats <- Biglist_list_item_intersectmats[[t+1]]
         #   list_item_intersectmats_tmin1 <- Biglist_list_item_intersectmats[[n.time_train]]
@@ -1921,8 +2006,8 @@ ARPbartX_fullcond <- function(y.train = NULL,
         #   # intersectmat <- list_item_intersectmats[[index_item]]
         #   intersectmat_tmin1 <- list_item_intersectmats_tmin1[[index_item]]
         # }else{
-          # intersectmat <- Biglist_intersectmats[[t+1]]
-          intersectmat_tmin1 <- Biglist_intersectmats[[n.time_train]]
+        # intersectmat <- Biglist_intersectmats[[t+1]]
+        intersectmat_tmin1 <- Biglist_intersectmats[[n.time_train]]
         # }
 
         num_regions <- nrow(intersectmat)
@@ -1957,7 +2042,7 @@ ARPbartX_fullcond <- function(y.train = NULL,
 
         # rankvec_t <- ranks_mat[,  (n.time-1)*n.ranker + indiv]
 
-        y_t <- y.train[n.time_train,indiv]
+        y_t <- y.train_from1[n.time_train,indiv]
 
 
 
@@ -1992,14 +2077,16 @@ ARPbartX_fullcond <- function(y.train = NULL,
         # }
 
 
-        if(y_t == 1){
-          temp_lower3 <- 0 # scalezero # 0
-          temp_upper3 <- Inf
-        }else{
-          temp_lower3 <- -Inf
-          temp_upper3 <- 0 # scalezero # 0
-        }
+        # if(y_t == 1){
+        #   temp_lower3 <- 0 # scalezero # 0
+        #   temp_upper3 <- Inf
+        # }else{
+        #   temp_lower3 <- -Inf
+        #   temp_upper3 <- 0 # scalezero # 0
+        # }
 
+        temp_lower3 <- c(-Inf,thresholds)[y_t] # scalezero # 0
+        temp_upper3 <- c(thresholds,Inf)[y_t]
 
 
         temp_mean2_origscale <- (temp_mean2 + 0.5)*(max_resp - min_resp) + min_resp
@@ -2246,8 +2333,9 @@ ARPbartX_fullcond <- function(y.train = NULL,
       # draw$alpha[,iter_min_burnin] = alpha
       # draw$beta[,iter_min_burnin] = beta
       draw$mu[,,iter_min_burnin] = matrix(mu, nrow = num_indiv, ncol = n.time_train) # mu
-      draw$prob.train.draws[,,iter_min_burnin] = pnorm(draw$mu[,,iter_min_burnin])
-      # draw$sigma2.alpha[iter_min_burnin] = sigma2.alpha
+      draw$prob.train.draws[, , 1:num_categories, iter_min_burnin] <-
+        pnorm( outer( X = - draw$mu[, , iter_min_burnin],  Y =  c(thresholds, Inf ), FUN = "+")  ) -
+        pnorm( outer( X = - draw$mu[, , iter_min_burnin],  Y =  c(-Inf,thresholds ), FUN = "+")  )# draw$sigma2.alpha[iter_min_burnin] = sigma2.alpha      # draw$sigma2.alpha[iter_min_burnin] = sigma2.alpha
       # draw$sigma2.beta[iter_min_burnin] = sigma2.beta
     }
 
@@ -2632,7 +2720,9 @@ ARPbartX_fullcond <- function(y.train = NULL,
 
       if(iter > n.burnin){
         draw$mu_test[,,iter_min_burnin] <- matrix(temp_mu_test, nrow = num_indiv, ncol = num_test_periods) # temp_mu_test
-        draw$prob.test.draws[,,iter_min_burnin] <- pnorm(draw$mu_test[,,iter_min_burnin])
+        draw$prob.test.draws[, , 1:num_categories, iter_min_burnin] <-
+          pnorm( outer( X = - draw$mu_test[, , iter_min_burnin],  Y =  c(thresholds, Inf ), FUN = "+")  ) -
+          pnorm( outer( X = - draw$mu_test[, , iter_min_burnin],  Y =  c(-Inf,thresholds ), FUN = "+")  )
         # draw$mu_test[,iter_min_burnin] <- samplestemp$test[,1]
 
         if(keep_zmat==TRUE){
@@ -2673,5 +2763,6 @@ ARPbartX_fullcond <- function(y.train = NULL,
   return(draw)
 
 }
+
 
 

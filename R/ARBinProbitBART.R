@@ -565,6 +565,8 @@ interNtreesB <- function(inter_list){
 #' @import truncnorm
 #' @import mvtnorm
 #' @import dbarts
+#' @import MASS
+#' @import collapse
 #' @importFrom Rcpp evalCpp
 #' @param y.train A vector (or matrix for panel data) of binary outcomes. Rows correspond to time periods, columns correspond to variables.
 #' @param n.iter Number of iterations excluding burnin.
