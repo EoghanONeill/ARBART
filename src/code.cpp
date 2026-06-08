@@ -8,7 +8,10 @@ using namespace Rcpp;
 
 // [[Rcpp::depends(RcppArmadillo)]]
 // [[Rcpp::export]]
-arma::mat rebuildTreeRecurse_cpp(arma::mat tree_mat1,double lower1, double upper1, int rowind, arma::mat tree_mat) {
+arma::mat rebuildTreeRecurse_cpp(const arma::mat& tree_mat1,
+                                double lower1, double upper1,
+                                int rowind,
+                                arma::mat tree_mat) {
 
 
   // Rcout << "LIne 14. tree_mat1.n_rows = " << tree_mat1.n_rows << ". \n";
@@ -122,7 +125,7 @@ arma::mat rebuildTreeRecurse_cpp(arma::mat tree_mat1,double lower1, double upper
 
 // [[Rcpp::depends(RcppArmadillo)]]
 // [[Rcpp::export]]
-arma::mat rebuildTree2_cpp(arma::mat tree_mat) {
+arma::mat rebuildTree2_cpp(const arma::mat& tree_mat) {
 
   // Rcout << "line 86 . \n";
 
@@ -174,9 +177,9 @@ arma::mat rebuildTree2_cpp(arma::mat tree_mat) {
 
 // [[Rcpp::depends(RcppArmadillo)]]
 // [[Rcpp::export]]
-arma::field<arma::mat> getPredictionsForTreeRecursive_cpp(arma::field<arma::mat> outputF , //arma::mat tree_mat,
+arma::field<arma::mat> getPredictionsForTreeRecursive_cpp(arma::field<arma::mat>& outputF , //arma::mat tree_mat,
                                                           bool gobool,
-                                                          arma::mat x_mat//, arma::mat outputmat
+                                                          const arma::mat& x_mat//, arma::mat outputmat
 ) {
 
   // arma::field<arma::mat> outputF(2);
@@ -438,7 +441,7 @@ arma::field<arma::mat> getPredictionsForTreeRecursive_cpp(arma::field<arma::mat>
 
 // [[Rcpp::depends(RcppArmadillo)]]
 // [[Rcpp::export]]
-arma::mat getPredictionsRangesForTree3_cpp(arma::mat tree_mat, arma::mat x_mat) {
+arma::mat getPredictionsRangesForTree3_cpp(const arma::mat& tree_mat, const arma::mat& x_mat) {
 
 
   // Rcout << "line 422 . \n";
@@ -483,3 +486,137 @@ arma::mat getPredictionsRangesForTree3_cpp(arma::mat tree_mat, arma::mat x_mat) 
 
   return(outputmat2);
 }
+
+
+// [[Rcpp::depends(RcppArmadillo)]]
+// [[Rcpp::export]]
+arma::field<arma::mat> getListintermats_cpp(const arma::field<arma::mat>& rebuilt_tree_list, const arma::mat& x_mat) {
+
+
+  // Rcout << "line 422 . \n";
+  arma::field<arma::mat> output_list(rebuilt_tree_list.n_elem);
+
+  for(unsigned int list_ind=0; list_ind < rebuilt_tree_list.n_elem; list_ind++){
+
+    output_list(list_ind) = getPredictionsRangesForTree3_cpp(rebuilt_tree_list(list_ind),
+                x_mat);
+  }
+
+  return(output_list);
+}
+
+
+
+
+// [[Rcpp::export]]
+arma::vec unique_with_specials(arma::vec x) {
+
+  // 1. Check if any NaN values exist.
+  // .is_nan() returns a uvec (vector of 0s and 1s)
+  bool has_nan = x.has_nan();
+
+  // x.is_inf() detects both +Inf and -Inf. We must check them individually.
+  bool has_pos_inf = arma::any(x == arma::datum::inf);
+  bool has_neg_inf = arma::any(x == -arma::datum::inf);
+
+  // 2. Get *only* the finite numbers.
+  arma::uvec finite_indices = arma::find_finite(x);
+  arma::vec x_finite_only = x.elem(finite_indices);
+
+  // 3. Get unique values from the finite-only vector.
+  arma::vec u_finite = arma::unique(x_finite_only);
+
+  // 4. Rebuild the final vector, adding special values back in order.
+  //    We use a std::vector as an intermediate step, as it's
+  //    easier to dynamically build than resizing arma::vec.
+  std::vector<double> final_values;
+
+  if (has_neg_inf) {
+    final_values.push_back(-arma::datum::inf);
+  }
+
+  // Add all the unique finite numbers
+  for(double val : u_finite) {
+    final_values.push_back(val);
+  }
+
+  if (has_pos_inf) {
+    final_values.push_back(arma::datum::inf);
+  }
+
+  if (has_nan) {
+    final_values.push_back(arma::datum::nan);
+  }
+
+  // Convert the std::vector back to an arma::vec
+  // 'true' means 'copy_aux_mem'
+  arma::vec u_final = arma::vec(final_values.data(), final_values.size(), true);
+
+  return u_final;
+}
+
+
+
+
+// [[Rcpp::depends(RcppArmadillo)]]
+// [[Rcpp::export]]
+arma::mat interNtreesB_cpp(const arma::field<arma::mat>& inter_list) {
+
+
+  arma::field<arma::vec> xlist(inter_list.n_elem);
+  arma::field<arma::vec> ylist(inter_list.n_elem);
+
+
+  unsigned int x_length = 0;
+  for(unsigned int list_ind=0; list_ind < inter_list.n_elem; list_ind++){
+    arma::vec tempvec(1 + inter_list(list_ind).n_rows);
+    tempvec(0) = - arma::datum::inf;
+    tempvec.subvec(1,inter_list(list_ind).n_rows) = inter_list(list_ind).col(2) ;
+    xlist(list_ind) = tempvec; // {- arma::datum::inf , inter_list(list_ind).col(2)};
+    ylist(list_ind) = inter_list(list_ind).col(0);
+    x_length = x_length +  xlist(list_ind).n_elem;
+  }
+  arma::vec x_unlist(x_length);
+  x_length = 0;
+  if(inter_list.n_elem >1){
+    for(unsigned int list_ind=0; list_ind < inter_list.n_elem; list_ind++){
+      // arma::vec tempvec = xlist(list_ind);
+      x_unlist.subvec(x_length, x_length +  xlist(list_ind).n_elem - 1) = xlist(list_ind) ;
+      x_length = x_length +  xlist(list_ind).n_elem;
+    }
+  }
+
+  // Rcout << "line 539.\n";
+  arma::vec xs = unique_with_specials(x_unlist);
+  arma::vec ypredvec(xs.n_elem - 1);
+  // Rcout << "xs = " << xs << ".\n";
+
+  for( unsigned int i=1; i < xs.n_elem; i++){
+    // Rcout << "line 544.\n";
+    double tempval = xs(i);
+    ypredvec(i-1) = 0.0;
+    // Rcout << "line 547.\n";
+    // Rcout << "i = " << i << ".\n";
+    // Rcout << "tempval = " << tempval << ".\n";
+    for( arma::uword j=0; j < inter_list.n_elem; j++){
+      // Rcout << "j = " << j << ".\n";
+      // Rcout << "xlist(j).n_elem = " << xlist(j).n_elem << ".\n";
+      // Rcout << "xlist(j) = " << xlist(j) << ".\n";
+      arma::uvec tempinds = arma::find(xlist(j) < tempval);
+      // Rcout << "tempinds = " << tempinds << ".\n";
+      arma:: uword tempind = tempinds(tempinds.n_elem-1);
+      // Rcout << "tempind = " << tempind << ".\n";
+      // Rcout << "ylist(j).n_elem = " << ylist(j).n_elem << ".\n";
+      ypredvec(i-1) = ypredvec(i-1) + (ylist(j))(tempind);
+    }
+    // Rcout << "line 556.\n";
+  }
+
+  arma::mat newmat(xs.n_elem-1,3);
+  newmat.col(0) = ypredvec;
+  newmat.col(1) = xs.subvec(0,xs.n_elem-2);
+  newmat.col(2) = xs.subvec(1,xs.n_elem-1);
+
+  return(newmat);
+}
+

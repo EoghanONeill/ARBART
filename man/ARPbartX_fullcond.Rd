@@ -29,7 +29,8 @@ ARPbartX_fullcond(
   rngSeed = NA_integer_,
   updateState = TRUE,
   print.opt = 100L,
-  seq_z_draws = 1
+  seq_z_draws = 1,
+  max_z_resamples = 10
 )
 }
 \arguments{

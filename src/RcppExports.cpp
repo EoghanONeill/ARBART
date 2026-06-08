@@ -12,12 +12,12 @@ Rcpp::Rostream<false>& Rcpp::Rcerr = Rcpp::Rcpp_cerr_get();
 #endif
 
 // rebuildTreeRecurse_cpp
-arma::mat rebuildTreeRecurse_cpp(arma::mat tree_mat1, double lower1, double upper1, int rowind, arma::mat tree_mat);
+arma::mat rebuildTreeRecurse_cpp(const arma::mat& tree_mat1, double lower1, double upper1, int rowind, arma::mat tree_mat);
 RcppExport SEXP _ARBART_rebuildTreeRecurse_cpp(SEXP tree_mat1SEXP, SEXP lower1SEXP, SEXP upper1SEXP, SEXP rowindSEXP, SEXP tree_matSEXP) {
 BEGIN_RCPP
     Rcpp::RObject rcpp_result_gen;
     Rcpp::RNGScope rcpp_rngScope_gen;
-    Rcpp::traits::input_parameter< arma::mat >::type tree_mat1(tree_mat1SEXP);
+    Rcpp::traits::input_parameter< const arma::mat& >::type tree_mat1(tree_mat1SEXP);
     Rcpp::traits::input_parameter< double >::type lower1(lower1SEXP);
     Rcpp::traits::input_parameter< double >::type upper1(upper1SEXP);
     Rcpp::traits::input_parameter< int >::type rowind(rowindSEXP);
@@ -27,38 +27,72 @@ BEGIN_RCPP
 END_RCPP
 }
 // rebuildTree2_cpp
-arma::mat rebuildTree2_cpp(arma::mat tree_mat);
+arma::mat rebuildTree2_cpp(const arma::mat& tree_mat);
 RcppExport SEXP _ARBART_rebuildTree2_cpp(SEXP tree_matSEXP) {
 BEGIN_RCPP
     Rcpp::RObject rcpp_result_gen;
     Rcpp::RNGScope rcpp_rngScope_gen;
-    Rcpp::traits::input_parameter< arma::mat >::type tree_mat(tree_matSEXP);
+    Rcpp::traits::input_parameter< const arma::mat& >::type tree_mat(tree_matSEXP);
     rcpp_result_gen = Rcpp::wrap(rebuildTree2_cpp(tree_mat));
     return rcpp_result_gen;
 END_RCPP
 }
 // getPredictionsForTreeRecursive_cpp
-arma::field<arma::mat> getPredictionsForTreeRecursive_cpp(arma::field<arma::mat> outputF, bool gobool, arma::mat x_mat);
+arma::field<arma::mat> getPredictionsForTreeRecursive_cpp(arma::field<arma::mat>& outputF, bool gobool, const arma::mat& x_mat);
 RcppExport SEXP _ARBART_getPredictionsForTreeRecursive_cpp(SEXP outputFSEXP, SEXP goboolSEXP, SEXP x_matSEXP) {
 BEGIN_RCPP
     Rcpp::RObject rcpp_result_gen;
     Rcpp::RNGScope rcpp_rngScope_gen;
-    Rcpp::traits::input_parameter< arma::field<arma::mat> >::type outputF(outputFSEXP);
+    Rcpp::traits::input_parameter< arma::field<arma::mat>& >::type outputF(outputFSEXP);
     Rcpp::traits::input_parameter< bool >::type gobool(goboolSEXP);
-    Rcpp::traits::input_parameter< arma::mat >::type x_mat(x_matSEXP);
+    Rcpp::traits::input_parameter< const arma::mat& >::type x_mat(x_matSEXP);
     rcpp_result_gen = Rcpp::wrap(getPredictionsForTreeRecursive_cpp(outputF, gobool, x_mat));
     return rcpp_result_gen;
 END_RCPP
 }
 // getPredictionsRangesForTree3_cpp
-arma::mat getPredictionsRangesForTree3_cpp(arma::mat tree_mat, arma::mat x_mat);
+arma::mat getPredictionsRangesForTree3_cpp(const arma::mat& tree_mat, const arma::mat& x_mat);
 RcppExport SEXP _ARBART_getPredictionsRangesForTree3_cpp(SEXP tree_matSEXP, SEXP x_matSEXP) {
 BEGIN_RCPP
     Rcpp::RObject rcpp_result_gen;
     Rcpp::RNGScope rcpp_rngScope_gen;
-    Rcpp::traits::input_parameter< arma::mat >::type tree_mat(tree_matSEXP);
-    Rcpp::traits::input_parameter< arma::mat >::type x_mat(x_matSEXP);
+    Rcpp::traits::input_parameter< const arma::mat& >::type tree_mat(tree_matSEXP);
+    Rcpp::traits::input_parameter< const arma::mat& >::type x_mat(x_matSEXP);
     rcpp_result_gen = Rcpp::wrap(getPredictionsRangesForTree3_cpp(tree_mat, x_mat));
+    return rcpp_result_gen;
+END_RCPP
+}
+// getListintermats_cpp
+arma::field<arma::mat> getListintermats_cpp(const arma::field<arma::mat>& rebuilt_tree_list, const arma::mat& x_mat);
+RcppExport SEXP _ARBART_getListintermats_cpp(SEXP rebuilt_tree_listSEXP, SEXP x_matSEXP) {
+BEGIN_RCPP
+    Rcpp::RObject rcpp_result_gen;
+    Rcpp::RNGScope rcpp_rngScope_gen;
+    Rcpp::traits::input_parameter< const arma::field<arma::mat>& >::type rebuilt_tree_list(rebuilt_tree_listSEXP);
+    Rcpp::traits::input_parameter< const arma::mat& >::type x_mat(x_matSEXP);
+    rcpp_result_gen = Rcpp::wrap(getListintermats_cpp(rebuilt_tree_list, x_mat));
+    return rcpp_result_gen;
+END_RCPP
+}
+// unique_with_specials
+arma::vec unique_with_specials(arma::vec x);
+RcppExport SEXP _ARBART_unique_with_specials(SEXP xSEXP) {
+BEGIN_RCPP
+    Rcpp::RObject rcpp_result_gen;
+    Rcpp::RNGScope rcpp_rngScope_gen;
+    Rcpp::traits::input_parameter< arma::vec >::type x(xSEXP);
+    rcpp_result_gen = Rcpp::wrap(unique_with_specials(x));
+    return rcpp_result_gen;
+END_RCPP
+}
+// interNtreesB_cpp
+arma::mat interNtreesB_cpp(const arma::field<arma::mat>& inter_list);
+RcppExport SEXP _ARBART_interNtreesB_cpp(SEXP inter_listSEXP) {
+BEGIN_RCPP
+    Rcpp::RObject rcpp_result_gen;
+    Rcpp::RNGScope rcpp_rngScope_gen;
+    Rcpp::traits::input_parameter< const arma::field<arma::mat>& >::type inter_list(inter_listSEXP);
+    rcpp_result_gen = Rcpp::wrap(interNtreesB_cpp(inter_list));
     return rcpp_result_gen;
 END_RCPP
 }
@@ -68,6 +102,9 @@ static const R_CallMethodDef CallEntries[] = {
     {"_ARBART_rebuildTree2_cpp", (DL_FUNC) &_ARBART_rebuildTree2_cpp, 1},
     {"_ARBART_getPredictionsForTreeRecursive_cpp", (DL_FUNC) &_ARBART_getPredictionsForTreeRecursive_cpp, 3},
     {"_ARBART_getPredictionsRangesForTree3_cpp", (DL_FUNC) &_ARBART_getPredictionsRangesForTree3_cpp, 2},
+    {"_ARBART_getListintermats_cpp", (DL_FUNC) &_ARBART_getListintermats_cpp, 2},
+    {"_ARBART_unique_with_specials", (DL_FUNC) &_ARBART_unique_with_specials, 1},
+    {"_ARBART_interNtreesB_cpp", (DL_FUNC) &_ARBART_interNtreesB_cpp, 1},
     {NULL, NULL, 0}
 };
 

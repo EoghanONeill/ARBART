@@ -17,3 +17,15 @@ getPredictionsRangesForTree3_cpp <- function(tree_mat, x_mat) {
     .Call(`_ARBART_getPredictionsRangesForTree3_cpp`, tree_mat, x_mat)
 }
 
+getListintermats_cpp <- function(rebuilt_tree_list, x_mat) {
+    .Call(`_ARBART_getListintermats_cpp`, rebuilt_tree_list, x_mat)
+}
+
+unique_with_specials <- function(x) {
+    .Call(`_ARBART_unique_with_specials`, x)
+}
+
+interNtreesB_cpp <- function(inter_list) {
+    .Call(`_ARBART_interNtreesB_cpp`, inter_list)
+}
+

@@ -6,7 +6,9 @@ fastnormdens <- function(x, mean = 0, sd = 0){
   (1/(sd*sqrt(2*pi)))*exp(-0.5*((x-mean)/sd)^2)
 }
 
-
+fastlognormdens <- function(x, mean = 0, sd = 0){
+  -log(sd*sqrt(2*pi)) + (-0.5*((x-mean)/sd)^2)
+}
 
 rebuildTree2 <- function(tree) {
   # Define a worker function that will be recursively called on every node.
@@ -499,21 +501,19 @@ interNtreesB <- function(inter_list){
 
   #create a step function
   xlist <- list()
+  ylist <- list()
+
   for(i in 1:length(inter_list)){
     xlist[[i]] <- c(-Inf, (inter_list[[i]])[,3])
+    ylist[[i]] <-  (inter_list[[i]])[,1]
   }
 
   # x1 <- c(-Inf, intermat1[,3])
   # x2 <- c(-Inf, intermat2[,3])
 
-  xs <- sort(unique(unlist(xlist)))
+  # xs <- sort(unique(unlist(xlist)))
+  xs <- collapse::funique(unlist(xlist), sort = TRUE)
 
-
-  ylist <- list()
-
-  for(i in 1:length(inter_list)){
-    ylist[[i]] <-  (inter_list[[i]])[,1]
-  }
 
   # y1 <- intermat1[,1]
   # y2 <- intermat2[,1]
@@ -1120,7 +1120,8 @@ ARPbart_NOCovars_fullcond <- function(y.train = NULL,
         # print("treeexample1 = ")
         # print(treeexample1)
         # # rebuilt_tree <- rebuildTree2(treeexample1)
-        rebuilt_tree <- rebuildTree2_cpp(as.matrix(treeexample1))
+        # rebuilt_tree <- rebuildTree2_cpp(as.matrix(treeexample1))
+        rebuilt_tree <- ARBART:::rebuildTree2_cpp((treeexample1))
         # print("Line 499")
         #
         #must use covariates for individual indiv at time period t
@@ -1163,7 +1164,8 @@ ARPbart_NOCovars_fullcond <- function(y.train = NULL,
           # print("treeexample1 = ")
           # print(treeexample1)
           # # rebuilt_tree <- rebuildTree2(treeexample1)
-          rebuilt_tree <- rebuildTree2_cpp(as.matrix(treeexample1))
+          # rebuilt_tree <- rebuildTree2_cpp(as.matrix(treeexample1))
+          rebuilt_tree <- ARBART:::rebuildTree2_cpp((treeexample1))
           # print("Line 499")
           #
           #must use covariates for individual indiv at time period t
@@ -2122,11 +2124,11 @@ ARPbart_NOCovars_fullcond <- function(y.train = NULL,
           }
 
 
-          if(any(temp_region_probs[,1] < 0)){
-            print("temp_region_probs[,1] =  ")
-            print(temp_region_probs[,1])
-            stop("negative probabiltiies")
-          }
+          # if(any(temp_region_probs[,1] < 0)){
+          #   print("temp_region_probs[,1] =  ")
+          #   print(temp_region_probs[,1])
+          #   stop("negative probabiltiies")
+          # }
 
           # sample a region using probabilities obtained above
 
@@ -2330,7 +2332,7 @@ ARPbart_NOCovars_fullcond <- function(y.train = NULL,
 
 
     ####### update Z lag matrix ####################
-    prin("line 2318")
+    # print("line 2318")
 
 
     Zlag.mat <- matrix(NA, nrow = n.time_train*num_indiv, ncol = num_lags)
@@ -2356,7 +2358,7 @@ ARPbart_NOCovars_fullcond <- function(y.train = NULL,
         if(seq_z_draws==1){
           stop("updates still not consistent with tree structure")
         }
-        print("new z values not consistent with tree structure, must draw again")
+        # print("new z values not consistent with tree structure, must draw again")
 
         # print("current values ")
         # print("sampler$data@x = ")
@@ -2526,9 +2528,9 @@ ARPbart_NOCovars_fullcond <- function(y.train = NULL,
     if(iter > n.burnin){
       # store value at this iteration
       if(keep_zmat==TRUE){
-        prin("line 2514")
+        # print("line 2514")
         draw$Z.mat[,,iter_min_burnin] = Z.mat
-        prin("line 2515")
+        # print("line 2515")
 
         draw$Z.mat.test[,,iter_min_burnin] = Z.mat.test
       }
@@ -2690,7 +2692,8 @@ ARPbart_NOCovars_fullcond <- function(y.train = NULL,
           # print("treeexample1 = ")
           # print(treeexample1)
           # # rebuilt_tree <- rebuildTree2(treeexample1)
-          rebuilt_tree <- rebuildTree2_cpp(as.matrix(treeexample1))
+          # rebuilt_tree <- rebuildTree2_cpp(as.matrix(treeexample1))
+          rebuilt_tree <- ARBART:::rebuildTree2_cpp((treeexample1))
           # print("Line 499")
           #
           #must use covariates for individual indiv at time period t
@@ -2739,7 +2742,8 @@ ARPbart_NOCovars_fullcond <- function(y.train = NULL,
             # print("treeexample1 = ")
             # print(treeexample1)
             # # rebuilt_tree <- rebuildTree2(treeexample1)
-            rebuilt_tree <- rebuildTree2_cpp(as.matrix(treeexample1))
+            # rebuilt_tree <- rebuildTree2_cpp(as.matrix(treeexample1))
+            rebuilt_tree <- ARBART:::rebuildTree2_cpp((treeexample1))
             # print("Line 499")
             #
             #must use covariates for individual indiv at time period t

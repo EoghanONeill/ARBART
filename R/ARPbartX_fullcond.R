@@ -61,7 +61,8 @@ ARPbartX_fullcond <- function(y.train = NULL,
                               rngSeed = NA_integer_,
                               updateState = TRUE,
                               print.opt = 100L,
-                              seq_z_draws = 1
+                              seq_z_draws = 1,
+                              max_z_resamples = 10
 ){
 
 
@@ -225,13 +226,13 @@ ARPbartX_fullcond <- function(y.train = NULL,
     #partly vectorized code
     if((indiv.offsets == FALSE)|(num_indiv == 1)){
 
-      Z.mat[y.train[,j]==1,j] <- rtruncnorm(sum(y.train[,j]), a= 0, b = Inf, mean = offsetz, sd = 1)
-      Z.mat[y.train[,j]==0,j] <- rtruncnorm(n.time_train - sum(y.train[,j]), a= -Inf, b = 0, mean = offsetz, sd = 1)
+      Z.mat[which(y.train[,j]==1),j] <- 0.5 # rtruncnorm(sum(y.train[,j]), a= 0, b = Inf, mean = offsetz, sd = 1)
+      Z.mat[which(y.train[,j]==0),j] <- -0.5 # rtruncnorm(n.time_train - sum(y.train[,j]), a= -Inf, b = 0, mean = offsetz, sd = 1)
 
     }else{
 
-      Z.mat[y.train[,j]==1,j] <- rtruncnorm(num_ones_vec[j], a= 0, b = Inf, mean = offsetz_vec[j], sd = 1)
-      Z.mat[y.train[,j]==0,j] <- rtruncnorm(n.time_train - num_ones_vec[j], a= -Inf , b = 0, mean = offsetz_vec[j], sd = 1)
+      Z.mat[which(y.train[,j]==1),j] <- 0.5 # rtruncnorm(num_ones_vec[j], a= 0, b = Inf, mean = offsetz_vec[j], sd = 1)
+      Z.mat[which(y.train[,j]==0),j] <- -0.5 # rtruncnorm(n.time_train - num_ones_vec[j], a= -Inf , b = 0, mean = offsetz_vec[j], sd = 1)
     }
 
     # non-vectorized code
@@ -257,6 +258,7 @@ ARPbartX_fullcond <- function(y.train = NULL,
     # } # end i loop
 
   } # end j loop
+
 
 
   # print("Z.mat = ")
@@ -395,6 +397,13 @@ ARPbartX_fullcond <- function(y.train = NULL,
 
   # print("begin dbarts")
 
+  # k_sig_mu <- 2
+  # if(edited_scale){
+  #   k_sig_mu <- sqrt(2)/6
+  # }
+
+
+  k_sig_mu <- 3
 
   # if(nrow(X.test )==0){
 
@@ -404,7 +413,7 @@ ARPbartX_fullcond <- function(y.train = NULL,
                       data = Xmat.train,
                       #test = Xmat.test,
                       control = control,
-                      resid.prior = fixed(1),
+                      resid.prior = fixed(1), node.prior = normal(k_sig_mu),
                       sigma=1 #check if this is the correct approach for setting the variance to 1
     )
   }else{
@@ -462,6 +471,9 @@ ARPbartX_fullcond <- function(y.train = NULL,
 
   mu <- mutemp
 
+
+
+  Xmat.train <- as.matrix(Xmat.train)
 
   # print("line 919")
   # print("sampler$data@x = ")
@@ -577,12 +589,12 @@ ARPbartX_fullcond <- function(y.train = NULL,
 
         # if num_lags > 1 this would have to be edited (just first column dropped)
 
-        list_inter_mats[[i]] <- getPredictionsRangesForTree3_cpp(as.matrix(rebuilt_tree),
+        list_inter_mats[[i]] <- getPredictionsRangesForTree3_cpp((rebuilt_tree),
                                                                  as.matrix(Xmat.train[indiv_ind,-1, drop = FALSE]) )
 
       }
 
-      intersectmat <- interNtreesB(list_inter_mats)
+      intersectmat <- interNtreesB_cpp(list_inter_mats)
 
       # Biglist_intersectmats[[t]] <- intersectmat
 
@@ -661,7 +673,7 @@ ARPbartX_fullcond <- function(y.train = NULL,
     #
     #   }
     #
-    #   intersectmat <- interNtreesB(list_inter_mats)
+    #   intersectmat <- interNtreesB_cpp(list_inter_mats)
     #
     #   kpredtemp <- which((as.matrix(tempbind[1,])[1] < intersectmat[, 3]) )[1]
     #   # Then obtain the corresponding region mean value
@@ -872,6 +884,21 @@ ARPbartX_fullcond <- function(y.train = NULL,
     intersectmat_tmin1 <- NA
     list_item_intersectmats_tmin1 <- NA
 
+
+    rebuilt_tree_list <- list()
+    for(i in 1:n.trees){
+
+      treeexample1 <- sampler$getTrees(treeNums = i,
+                                       chainNums = 1,
+                                       sampleNums = 1)
+
+      # rebuilt_tree <- rebuildTree2(treeexample1)
+
+      rebuilt_tree_list[[i]] <- rebuildTree2_cpp(as.matrix(treeexample1))
+
+    }
+
+
     # create vector of indices for ranker indiv in time period 1
 
     # this part is not really necessary
@@ -887,14 +914,16 @@ ARPbartX_fullcond <- function(y.train = NULL,
 
     for(i in 1:n.trees){
       # print("Line 492")
-      treeexample1 <- sampler$getTrees(treeNums = i,
-                                       chainNums = 1,
-                                       sampleNums = 1)
-      # print("Line 496")
-      # print("treeexample1 = ")
-      # print(treeexample1)
-      # rebuilt_tree <- rebuildTree2(treeexample1)
-      rebuilt_tree <- ARBART:::rebuildTree2_cpp(as.matrix(treeexample1))
+      # treeexample1 <- sampler$getTrees(treeNums = i,
+      #                                  chainNums = 1,
+      #                                  sampleNums = 1)
+      # # print("Line 496")
+      # # print("treeexample1 = ")
+      # # print(treeexample1)
+      # # rebuilt_tree <- rebuildTree2(treeexample1)
+      # rebuilt_tree <- ARBART:::rebuildTree2_cpp(as.matrix(treeexample1))
+
+      rebuilt_tree <- rebuilt_tree_list[[i]]
       # print("Line 499")
 
       #must use covariates for individual indiv at time period t
@@ -910,7 +939,7 @@ ARPbartX_fullcond <- function(y.train = NULL,
 
     # print("Line 510")
 
-    intersectmat <- interNtreesB(list_inter_mats)
+    intersectmat <- interNtreesB_cpp(list_inter_mats)
 
     # print("Line 1146")
 
@@ -969,28 +998,30 @@ ARPbartX_fullcond <- function(y.train = NULL,
 
 
 
-        list_inter_mats <- list()
+        # list_inter_mats <- list()
+        #
+        # for(i in 1:n.trees){
+        #
+        #   # treeexample1 <- sampler$getTrees(treeNums = i,
+        #   #                                  chainNums = 1,
+        #   #                                  sampleNums = 1)
+        #
+        #   # rebuilt_tree <- rebuildTree2(treeexample1)
+        #
+        #   rebuilt_tree <- rebuilt_tree_list[[i]] # rebuildTree2_cpp(as.matrix(treeexample1))
+        #
+        #
+        #
+        #   # list_inter_mats[[i]] <- getPredictionsRangesForTree3(rebuilt_tree, Xmat.train[obs_indices[1],-1, drop = FALSE] )
+        #   list_inter_mats[[i]] <- getPredictionsRangesForTree3_cpp((rebuilt_tree),
+        #                                                            as.matrix(Xmat.train[indiv_ind,-1, drop = FALSE]) )
+        #
+        #
+        # }
 
-        for(i in 1:n.trees){
 
-          treeexample1 <- sampler$getTrees(treeNums = i,
-                                           chainNums = 1,
-                                           sampleNums = 1)
-
-          # rebuilt_tree <- rebuildTree2(treeexample1)
-
-          rebuilt_tree <- rebuildTree2_cpp(as.matrix(treeexample1))
-
-
-
-          # list_inter_mats[[i]] <- getPredictionsRangesForTree3(rebuilt_tree, Xmat.train[obs_indices[1],-1, drop = FALSE] )
-          list_inter_mats[[i]] <- getPredictionsRangesForTree3_cpp(as.matrix(rebuilt_tree),
-                                                                   as.matrix(Xmat.train[indiv_ind,-1, drop = FALSE]) )
-
-
-        }
-
-        intersectmat_tmin1 <- interNtreesB(list_inter_mats)
+        list_inter_mats <- getListintermats_cpp(rebuilt_tree_list , as.matrix(Xmat.train[indiv_ind,-1, drop = FALSE]))
+        intersectmat_tmin1 <- interNtreesB_cpp(list_inter_mats)
 
 
         intersectmat_tmin1 <- cbind(intersectmat_tmin1, rep(NA, nrow(intersectmat_tmin1)))
@@ -1024,28 +1055,30 @@ ARPbartX_fullcond <- function(y.train = NULL,
 
 
 
-        list_inter_mats <- list()
+        # list_inter_mats <- list()
+        #
+        # for(i in 1:n.trees){
+        #
+        #   # treeexample1 <- sampler$getTrees(treeNums = i,
+        #   #                                  chainNums = 1,
+        #   #                                  sampleNums = 1)
+        #
+        #   # rebuilt_tree <- rebuildTree2(treeexample1)
+        #
+        #   rebuilt_tree <- rebuilt_tree_list[[i]] # rebuildTree2_cpp(as.matrix(treeexample1))
+        #
+        #   #must use covariates for individual indiv at time period t
+        #
+        #   # list_inter_mats[[i]] <- getPredictionsRangesForTree3(rebuilt_tree, Xmat.train[obs_indices[1],-1, drop = FALSE] )
+        #
+        #   list_inter_mats[[i]] <- getPredictionsRangesForTree3_cpp((rebuilt_tree),
+        #                                                            as.matrix(Xmat.train[indiv_ind,-1, drop = FALSE]) )
+        #
+        # }
 
-        for(i in 1:n.trees){
+        list_inter_mats <- getListintermats_cpp(rebuilt_tree_list , as.matrix(Xmat.train[indiv_ind,-1, drop = FALSE]))
 
-          treeexample1 <- sampler$getTrees(treeNums = i,
-                                           chainNums = 1,
-                                           sampleNums = 1)
-
-          # rebuilt_tree <- rebuildTree2(treeexample1)
-
-          rebuilt_tree <- rebuildTree2_cpp(as.matrix(treeexample1))
-
-          #must use covariates for individual indiv at time period t
-
-          # list_inter_mats[[i]] <- getPredictionsRangesForTree3(rebuilt_tree, Xmat.train[obs_indices[1],-1, drop = FALSE] )
-
-          list_inter_mats[[i]] <- getPredictionsRangesForTree3_cpp(as.matrix(rebuilt_tree),
-                                                                   as.matrix(Xmat.train[indiv_ind,-1, drop = FALSE]) )
-
-        }
-
-        intersectmat <- interNtreesB(list_inter_mats)
+        intersectmat <- interNtreesB_cpp(list_inter_mats)
 
 
         intersectmat <- cbind(intersectmat, rep(NA, nrow(intersectmat)))
@@ -1086,28 +1119,30 @@ ARPbartX_fullcond <- function(y.train = NULL,
 
           indiv_ind <- (t - 1)*num_indiv+indiv
 
-          list_inter_mats <- list()
+          # list_inter_mats <- list()
+          #
+          # for(i in 1:n.trees){
+          #
+          #   # treeexample1 <- sampler$getTrees(treeNums = i,
+          #   #                                  chainNums = 1,
+          #   #                                  sampleNums = 1)
+          #
+          #   # rebuilt_tree <- rebuildTree2(treeexample1)
+          #
+          #   rebuilt_tree <- rebuilt_tree_list[[i]] # rebuildTree2_cpp(as.matrix(treeexample1))
+          #
+          #   #must use covariates for individual indiv at time period t
+          #
+          #   # list_inter_mats[[i]] <- getPredictionsRangesForTree3(rebuilt_tree, Xmat.train[obs_indices[1],-1, drop = FALSE] )
+          #
+          #   list_inter_mats[[i]] <- getPredictionsRangesForTree3_cpp(rebuilt_tree,
+          #                                                            as.matrix(Xmat.train[indiv_ind,-1, drop = FALSE]) )
+          #
+          # }
 
-          for(i in 1:n.trees){
+          list_inter_mats <- getListintermats_cpp(rebuilt_tree_list , as.matrix(Xmat.train[indiv_ind,-1, drop = FALSE]))
 
-            treeexample1 <- sampler$getTrees(treeNums = i,
-                                             chainNums = 1,
-                                             sampleNums = 1)
-
-            # rebuilt_tree <- rebuildTree2(treeexample1)
-
-            rebuilt_tree <- rebuildTree2_cpp(as.matrix(treeexample1))
-
-            #must use covariates for individual indiv at time period t
-
-            # list_inter_mats[[i]] <- getPredictionsRangesForTree3(rebuilt_tree, Xmat.train[obs_indices[1],-1, drop = FALSE] )
-
-            list_inter_mats[[i]] <- getPredictionsRangesForTree3_cpp(as.matrix(rebuilt_tree),
-                                                                     as.matrix(Xmat.train[indiv_ind,-1, drop = FALSE]) )
-
-          }
-
-          intersectmat <- interNtreesB(list_inter_mats)
+          intersectmat <- interNtreesB_cpp(list_inter_mats)
 
           Biglist_intersectmats[[t]] <- intersectmat
 
@@ -1138,9 +1173,14 @@ ARPbartX_fullcond <- function(y.train = NULL,
 
         # let rows be period zero, and columns be period 1 (2?)
 
-        probmattemp <- matrix(0,
-                              nrow = num_regions_tmin1,
-                              ncol = num_regions)
+        # probmattemp <- matrix(0,
+        #                       nrow = num_regions_tmin1,
+        #                       ncol = num_regions)
+
+        logprobmattemp <-  matrix(-Inf,
+                                  nrow = num_regions_tmin1,
+                                  ncol = num_regions)
+
 
         # loop over period 2 regions into which z_1 can fall
 
@@ -1266,7 +1306,6 @@ ARPbartX_fullcond <- function(y.train = NULL,
         # }
 
 
-
         if(y_t == 1){
           temp_lower3 <- 0 # scalezero # 0
           temp_upper3 <- Inf
@@ -1277,179 +1316,222 @@ ARPbartX_fullcond <- function(y.train = NULL,
 
 
 
+        # tempmeanfordens <- (temp_mean + 0.5)*(max_resp - min_resp) + min_resp
+        tempmeanfordens <- (intersectmat[1:num_regions, 1] + 0.5)*(max_resp - min_resp) + min_resp
 
+        # temp_tnorm_logprobvec <- fastlognormdens(temp_ztp1,
+        #                                          mean = (intersectmat[, 1] + 0.5)*(max_resp - min_resp) + min_resp,
+        #                                          sd = 1)
 
+        bad_regions <- which((intersectmat[1:num_regions, 2] >= temp_upper3) | (temp_lower3 >= intersectmat[1:num_regions, 3]))
 
+        logprobmattemp[, bad_regions] <- -Inf #rep(-Inf,num_regions)
+        tempbounds[bad_regions, 1] <- NA
+        tempbounds[bad_regions, 2] <- NA
 
+        good_regions <- setdiff(1:num_regions, bad_regions)
+        temp_tnorm_logprobvec <- rep(NA, num_regions)
+        temp_tnorm_logprobvec[good_regions] <- fastlognormdens(temp_ztp1,
+                                                               mean = tempmeanfordens[good_regions],
+                                                               sd = 1)
 
-        for(k_ind in 1:num_regions){
+        logprobmattemp[1:num_regions_tmin1, good_regions] <- outer(log(intersectmat_tmin1[1:num_regions_tmin1,4]),
+                                                             temp_tnorm_logprobvec[good_regions],
+                                                             FUN = "+")
 
 
+        tempbounds[good_regions,1] <- pmax(intersectmat[good_regions, 2], temp_lower3)
+        tempbounds[good_regions,2] <- pmin(intersectmat[good_regions, 3], temp_upper3)
 
+        if(any(tempbounds[good_regions,1] >= tempbounds[good_regions,2])){
+          stop(" line 1868 bounds badly defined")
+        }
 
-          # obtain mean for truncated normal distribution
-          temp_mean <- intersectmat[k_ind, 1]
+        logprobstemp <- as.vector(logprobmattemp)
+        max_ll <- max(logprobstemp)
+        logsumexps <- max_ll + log(sum(exp( logprobstemp  -  max_ll )))
+        probstemp <- exp(logprobstemp - logsumexps)
 
-          # want trunc norm probability of latent variable value for item_ind
-          # in period t+1
-
-
-          # temp_tnorm_prob <- dtruncnorm(temp_ztp1,
-          #                               a=temp_lower,
-          #                               b=Inf,
-          #                               mean = temp_mean,
-          #                               sd = 1)
-
-          tempmeanfordens <- (temp_mean + 0.5)*(max_resp - min_resp) + min_resp
-
-          temp_tnorm_prob <- fastnormdens(temp_ztp1,
-                                          mean = tempmeanfordens,
-                                          sd = 1)
-
-          # temp_tnorm_prob <- fastnormdens(temp_ztp1,
-          #                          mean = temp_mean,
-          #                          sd = 1)
-
-          temp_mean <- intersectmat[k_ind, 1]
-
-
-
-          # now second term
-
-
-          temp_lower2 <- intersectmat[k_ind, 2]
-          temp_upper2 <- intersectmat[k_ind, 3]
-
-
-
-
-          # print("temp_lower2 = ")
-          # print(temp_lower2)
-          #
-          # print("temp_lower3 = ")
-          # print(temp_lower3)
-          #
-          # print("temp_upper2 = ")
-          # print(temp_upper2)
-          #
-          # print("temp_upper3 = ")
-          # print(temp_upper3)
-
-
-          if((temp_lower2 > temp_upper3) | (temp_lower3 > temp_upper2)){
-            # intervals do not overlap, therefore assign probability zero
-            # and skip to next iteration
-
-
-            # print("k_ind = ")
-            # print(k_ind)
-
-            # print("ncol(temp_region_probs) = ")
-            # print(ncol(temp_region_probs))
-
-            # print("nrow(temp_region_probs) = ")
-            # print(nrow(temp_region_probs))
-
-
-            # these three lines are technically unnecessary
-            probmattemp[, k_ind] <- rep(0,num_regions_tmin1)
-            tempbounds[k_ind, 1] <- NA
-            tempbounds[k_ind, 2] <- NA
-
-            next
-
-          }
-
-
-          temp_lower2 <- max(temp_lower2, temp_lower3)
-          temp_upper2 <- min(temp_upper2, temp_upper3)
-
-          if(temp_lower2 > temp_upper2){
-
-            print("as.vector(Z.mat)[(1-1)*n.item*n.ranker +
-                                              n.item*(indiv - 1) +
-                                              1:n.item]")
-
-            print(as.vector(Z.mat)[(1-1)*n.item*n.ranker +
-                                     n.item*(indiv - 1) +
-                                     1:n.item])
-
-            print("item_ind = ")
-            print(item_ind)
-
-            print("rankvec_t = ")
-            print(rankvec_t)
-
-            stop("Line 1581 temp_lower2 > temp_upper2")
-          }
-
-
-          for(k0_ind in 1:num_regions_tmin1){
-
-            #loop over all possible means
-            temp_mean2 <- intersectmat_tmin1[k0_ind,1]
-
-            # probability of being in intersection region
-
-            # prob_t_region <- pnorm(temp_upper2 - temp_mean2) - pnorm(temp_lower2 - temp_mean2)
-
-
-            # probmattemp[k0_ind, k_ind] <- prob_t_region*
-            #   temp_tnorm_prob *
-            #   intersectmat_tmin1[k0_ind,4]
-
-            probmattemp[k0_ind, k_ind] <- temp_tnorm_prob *
-              intersectmat_tmin1[k0_ind,4]
-
-            if(probmattemp[k0_ind, k_ind] < 0){
-              print("probmattemp[k0_ind, k_ind] = ")
-              print(probmattemp[k0_ind, k_ind])
-
-              # print("prob_t_region = ")
-              # print(prob_t_region)
-
-              print("temp_tnorm_prob = ")
-              print(temp_tnorm_prob)
-
-              print("intersectmat[k0_ind,4] = ")
-              print(intersectmat[k0_ind,4])
-
-              print("temp_upper2 = ")
-              print(temp_upper2)
-
-              print("temp_lower2 = ")
-              print(temp_lower2)
-
-              print("temp_mean2 = ")
-              print(temp_mean2)
-
-
-            }
-
-
-          } # end loop over k0
-
-          # save upper and lower bounds (mean saved in intersectmat)
-          # or just obtain again later
-
-          tempbounds[k_ind,1] <- temp_lower2
-          tempbounds[k_ind,2] <- temp_upper2
-
-
-        } # end loop over k1
-
-
-        #sample a combination of k0 and k1
-        # if necessary can use column sums to sample k1, then k0
-        # however, this is probably unnecessary
-
-
-        # print("Line 1621 before sample")
-
-        region_ind <- sample.int(num_regions_tmin1*num_regions,
+        region_ind <- sample.int(num_regions_tmin1*num_regions, # (num_regions^2),
                                  size = 1,
                                  replace = TRUE,
-                                 prob = as.vector(probmattemp))
+                                 prob = probstemp)
+
+
+        # for(k_ind in 1:num_regions){
+        #
+        #   # obtain mean for truncated normal distribution
+        #   # temp_mean <- intersectmat[k_ind, 1]
+        #
+        #   # want trunc norm probability of latent variable value for item_ind
+        #   # in period t+1
+        #
+        #
+        #   # temp_tnorm_prob <- dtruncnorm(temp_ztp1,
+        #   #                               a=temp_lower,
+        #   #                               b=Inf,
+        #   #                               mean = temp_mean,
+        #   #                               sd = 1)
+        #
+        #   # tempmeanfordens <- (temp_mean + 0.5)*(max_resp - min_resp) + min_resp
+        #
+        #   # temp_tnorm_prob <- fastnormdens(temp_ztp1,
+        #   #                                 mean = tempmeanfordens,
+        #   #                                 sd = 1)
+        #
+        #   # temp_tnorm_logprobvec <- fastlognormdens(temp_ztp1,
+        #   #                                          mean = tempmeanfordens,
+        #   #                                          sd = 1)
+        #
+        #   # temp_tnorm_prob <- fastnormdens(temp_ztp1,
+        #   #                          mean = temp_mean,
+        #   #                          sd = 1)
+        #
+        #   temp_tnorm_logprob <- temp_tnorm_logprobvec[k_ind]
+        #
+        #   temp_mean <- intersectmat[k_ind, 1]
+        #
+        #   # now second term
+        #   temp_lower2 <- intersectmat[k_ind, 2]
+        #   temp_upper2 <- intersectmat[k_ind, 3]
+        #
+        #
+        #   # print("temp_lower2 = ")
+        #   # print(temp_lower2)
+        #   #
+        #   # print("temp_lower3 = ")
+        #   # print(temp_lower3)
+        #   #
+        #   # print("temp_upper2 = ")
+        #   # print(temp_upper2)
+        #   #
+        #   # print("temp_upper3 = ")
+        #   # print(temp_upper3)
+        #
+        #
+        #   if((temp_lower2 > temp_upper3) | (temp_lower3 > temp_upper2)){
+        #     # intervals do not overlap, therefore assign probability zero
+        #     # and skip to next iteration
+        #
+        #
+        #     # print("k_ind = ")
+        #     # print(k_ind)
+        #
+        #     # print("ncol(temp_region_probs) = ")
+        #     # print(ncol(temp_region_probs))
+        #
+        #     # print("nrow(temp_region_probs) = ")
+        #     # print(nrow(temp_region_probs))
+        #
+        #
+        #     # these three lines are technically unnecessary
+        #     # probmattemp[, k_ind] <- rep(0,num_regions_tmin1)
+        #     logprobmattemp[, k_ind] <- rep(-Inf,num_regions_tmin1)
+        #     tempbounds[k_ind, 1] <- NA
+        #     tempbounds[k_ind, 2] <- NA
+        #
+        #     next
+        #
+        #   }
+        #
+        #
+        #   temp_lower2 <- max(temp_lower2, temp_lower3)
+        #   temp_upper2 <- min(temp_upper2, temp_upper3)
+        #
+        #   if(temp_lower2 > temp_upper2){
+        #
+        #     print("as.vector(Z.mat)[(1-1)*n.item*n.ranker +
+        #                                       n.item*(indiv - 1) +
+        #                                       1:n.item]")
+        #
+        #     print(as.vector(Z.mat)[(1-1)*n.item*n.ranker +
+        #                              n.item*(indiv - 1) +
+        #                              1:n.item])
+        #
+        #     print("item_ind = ")
+        #     print(item_ind)
+        #
+        #     print("rankvec_t = ")
+        #     print(rankvec_t)
+        #
+        #     stop("Line 1581 temp_lower2 > temp_upper2")
+        #   }
+        #
+        #
+        #   for(k0_ind in 1:num_regions_tmin1){
+        #
+        #     #loop over all possible means
+        #     temp_mean2 <- intersectmat_tmin1[k0_ind,1]
+        #
+        #     # probability of being in intersection region
+        #
+        #     # prob_t_region <- pnorm(temp_upper2 - temp_mean2) - pnorm(temp_lower2 - temp_mean2)
+        #
+        #
+        #     # probmattemp[k0_ind, k_ind] <- prob_t_region*
+        #     #   temp_tnorm_prob *
+        #     #   intersectmat_tmin1[k0_ind,4]
+        #
+        #     # probmattemp[k0_ind, k_ind] <- temp_tnorm_prob *
+        #     #   intersectmat_tmin1[k0_ind,4]
+        #
+        #     logprobmattemp[k0_ind, k_ind] <- temp_tnorm_logprob + log(intersectmat_tmin1[k0_ind,4])
+        #
+        #     if(probmattemp[k0_ind, k_ind] < 0){
+        #       print("probmattemp[k0_ind, k_ind] = ")
+        #       print(probmattemp[k0_ind, k_ind])
+        #
+        #       # print("prob_t_region = ")
+        #       # print(prob_t_region)
+        #
+        #       print("temp_tnorm_prob = ")
+        #       print(temp_tnorm_prob)
+        #
+        #       print("intersectmat[k0_ind,4] = ")
+        #       print(intersectmat[k0_ind,4])
+        #
+        #       print("temp_upper2 = ")
+        #       print(temp_upper2)
+        #
+        #       print("temp_lower2 = ")
+        #       print(temp_lower2)
+        #
+        #       print("temp_mean2 = ")
+        #       print(temp_mean2)
+        #     }
+        #
+        #
+        #   } # end loop over k0
+        #
+        #   # save upper and lower bounds (mean saved in intersectmat)
+        #   # or just obtain again later
+        #
+        #   tempbounds[k_ind,1] <- temp_lower2
+        #   tempbounds[k_ind,2] <- temp_upper2
+        #
+        #
+        # } # end loop over k1
+        #
+        # if(all(logprobmattemp == -Inf)){
+        #   stop("All probabilities equal to 0")
+        # }
+        #
+        # #sample a combination of k0 and k1
+        # # if necessary can use column sums to sample k1, then k0
+        # # however, this is probably unnecessary
+        #
+        # logprobstemp <- as.vector(logprobmattemp)
+        # max_ll <- max(logprobstemp)
+        # logsumexps <- max_ll + log(sum(exp( logprobstemp  -  max_ll )))
+        # probstemp <- exp(logprobstemp - logsumexps)
+        #
+        # # print("Line 1621 before sample")
+        #
+        # region_ind <- sample.int(num_regions_tmin1*num_regions,
+        #                          size = 1,
+        #                          replace = TRUE,
+        #                          prob = probstemp # as.vector(probmattemp)
+        #                          )
 
 
         # print("Line 1629 after sample")
@@ -1566,7 +1648,10 @@ ARPbartX_fullcond <- function(y.train = NULL,
           # first column is the probabilities
           # second column is the lower bounds
           # third column is the upper bounds
-          temp_region_probs <- matrix(0,
+          # temp_region_probs <- matrix(0,
+          #                             nrow = nrow(intersectmat),
+          #                             ncol = 3)
+          temp_region_logprobs <- matrix(-Inf,
                                       nrow = nrow(intersectmat),
                                       ncol = 3)
 
@@ -1715,7 +1800,9 @@ ARPbartX_fullcond <- function(y.train = NULL,
 
 
 
-
+          temp_tnorm_logprobvec <- fastlognormdens(temp_ztp1,
+                                          mean = (intersectmat[, 1] + 0.5)*(max_resp - min_resp) + min_resp,
+                                          sd = 1)
 
 
           for(k_ind in 1:num_regions){
@@ -1723,7 +1810,7 @@ ARPbartX_fullcond <- function(y.train = NULL,
 
 
             # obtain mean for truncated normal distribution
-            temp_mean <- intersectmat[k_ind, 1]
+            # temp_mean <- intersectmat[k_ind, 1]
 
 
 
@@ -1733,16 +1820,17 @@ ARPbartX_fullcond <- function(y.train = NULL,
             #                               mean = temp_mean,
             #                               sd = 1)
 
-            tempmeanfordens <- (temp_mean + 0.5)*(max_resp - min_resp) + min_resp
+            # tempmeanfordens <- (temp_mean + 0.5)*(max_resp - min_resp) + min_resp
 
-            temp_tnorm_prob <- fastnormdens(temp_ztp1,
-                                            mean = tempmeanfordens,
-                                            sd = 1)
+            # temp_tnorm_prob <- fastnormdens(temp_ztp1,
+            #                                 mean = tempmeanfordens,
+            #                                 sd = 1)
 
             # temp_tnorm_prob <- fastnormdens(temp_ztp1,
             #                          mean = temp_mean,
             #                          sd = 1)
 
+            temp_tnorm_logprob  <- temp_tnorm_logprobvec[k_ind]
 
             # Probability of z_t in intersection of
             # region k_ind (for period t+1)
@@ -1781,10 +1869,13 @@ ARPbartX_fullcond <- function(y.train = NULL,
               # print("nrow(temp_region_probs) = ")
               # print(nrow(temp_region_probs))
 
-              temp_region_probs[k_ind, 1] <- 0
-              temp_region_probs[k_ind, 2] <- NA
-              temp_region_probs[k_ind, 3] <- NA
+              # temp_region_probs[k_ind, 1] <- 0
+              # temp_region_probs[k_ind, 2] <- NA
+              # temp_region_probs[k_ind, 3] <- NA
 
+              temp_region_logprobs[k_ind, 1] <- -Inf
+              temp_region_logprobs[k_ind, 2] <- NA
+              temp_region_logprobs[k_ind, 3] <- NA
 
               next
             }
@@ -1842,7 +1933,9 @@ ARPbartX_fullcond <- function(y.train = NULL,
             # print(temp_tnorm_prob)
 
             # prob_t_region <- prob_t_region*temp_tnorm_prob
-            prob_t_region <- temp_tnorm_prob
+            # prob_t_region <- temp_tnorm_prob
+            logprob_t_region <- temp_tnorm_logprob
+
 
             # save region probability
 
@@ -1853,10 +1946,13 @@ ARPbartX_fullcond <- function(y.train = NULL,
             # print("prob_t_region = ")
             # print(prob_t_region)
 
-            temp_region_probs[k_ind, 1] <- prob_t_region
-            temp_region_probs[k_ind, 2] <- temp_lower2
-            temp_region_probs[k_ind, 3] <- temp_upper2
+            # temp_region_probs[k_ind, 1] <- prob_t_region
+            # temp_region_probs[k_ind, 2] <- temp_lower2
+            # temp_region_probs[k_ind, 3] <- temp_upper2
 
+            temp_region_logprobs[k_ind, 1] <- logprob_t_region
+            temp_region_logprobs[k_ind, 2] <- temp_lower2
+            temp_region_logprobs[k_ind, 3] <- temp_upper2
 
           }
 
@@ -1864,16 +1960,21 @@ ARPbartX_fullcond <- function(y.train = NULL,
           # sample a region using probabilities obtained above
 
           # print("Line 1903 before sample")
+          logprobstemp <- as.vector(temp_region_logprobs[,1])
+          max_ll <- max(logprobstemp)
+          logsumexps <- max_ll + log(sum(exp( logprobstemp  -  max_ll )))
+          probstemp <- exp(logprobstemp - logsumexps)
 
-          region_ind <- sample.int(num_regions, 1, replace = TRUE, prob = temp_region_probs[,1])
+          # region_ind <- sample.int(num_regions, 1, replace = TRUE, prob = temp_region_probs[,1])
+          region_ind <- sample.int(num_regions, 1, replace = TRUE, prob =probstemp)
 
           # print("Line 1914 after sample")
 
           temp_mean2_origscale <- (temp_mean2 + 0.5)*(max_resp - min_resp) + min_resp
 
           zdraw_temp <- rtruncnorm(n = 1,
-                                   a=temp_region_probs[region_ind, 2],
-                                   b=temp_region_probs[region_ind, 3],
+                                   a=temp_region_logprobs[region_ind, 2],
+                                   b=temp_region_logprobs[region_ind, 3],
                                    mean = temp_mean2_origscale + offsetz_vec[indiv],
                                    sd = 1)
 
@@ -2065,7 +2166,7 @@ ARPbartX_fullcond <- function(y.train = NULL,
         if(seq_z_draws==1){
           stop("updates still not consistent with tree structure")
         }
-        print("new z values not consistent with tree structure, must draw again")
+        # print("new z values not consistent with tree structure, must draw again")
 
         # print("current values ")
         # print("sampler$data@x = ")
@@ -2120,7 +2221,7 @@ ARPbartX_fullcond <- function(y.train = NULL,
 
     # if need to draw z values again, go back to start of loop
     if(temp_break==1){
-      if(breakcount == 10){
+      if(breakcount == max_z_resamples){
         Z.mat <- Z.matold
         Z.vec <- as.vector(t(Z.mat))
 
@@ -2168,6 +2269,13 @@ ARPbartX_fullcond <- function(y.train = NULL,
     min_resp <- min(Z.vec)
     max_resp <- max(Z.vec)
 
+    # if(sparse){
+    #   tempmodel <- sampler$model
+    #   tempmodel@tree.prior@splitProbabilities <- s_y
+    #   sampler$setModel(newModel = tempmodel)
+    # }
+
+
     scalezero <- (0 - min_resp)/(max_resp - min_resp) - 0.5
     scaled_offsetz_vec <- (offsetz_vec - min_resp)/(max_resp - min_resp) - 0.5
 
@@ -2185,6 +2293,13 @@ ARPbartX_fullcond <- function(y.train = NULL,
     # print(samplestemp$sigma)
 
     mu = mutemp
+
+    # if(sparse){
+    #   tempcounts <- fcount(sampler$getTrees()$var)
+    #   tempcounts <- tempcounts[tempcounts$x != -1, ]
+    #   var_count_y <- rep(0, p_y)
+    #   var_count_y[tempcounts$x] <- tempcounts$N
+    # }
 
     # print("line 2307 = ")
     #
@@ -2252,7 +2367,18 @@ ARPbartX_fullcond <- function(y.train = NULL,
     }
 
 
-
+    # if (sparse & (iter > floor(n.burnin * 0.5))) {
+    #   # s_update_z <- update_s(var_count_z, p_z, alpha_s_z)
+    #   # s_z <- s_update_z[[1]]
+    #
+    #   s_update_y <- update_s(var_count_y, p_y, alpha_s_y)
+    #   s_y <- s_update_y[[1]]
+    #
+    #   if(alpha_split_prior){
+    #     # alpha_s_z <- update_alpha(s_z, alpha_scale_z, alpha_a_z, alpha_b_z, p_z, s_update_z[[2]])
+    #     alpha_s_y <- update_alpha(s_y, alpha_scale_y, alpha_a_y, alpha_b_y, p_y, s_update_y[[2]])
+    #   }
+    # }
 
 
 
@@ -2422,7 +2548,7 @@ ARPbartX_fullcond <- function(y.train = NULL,
         #
         #   }
         #
-        #   intersectmat <- interNtreesB(list_inter_mats)
+        #   intersectmat <- interNtreesB_cpp(list_inter_mats)
         #
         #   kpredtemp <- which((as.matrix(tempbind[1,])[1] < intersectmat[, 3]) )[1]
         #   # Then obtain the corresponding region mean value
@@ -2467,30 +2593,32 @@ ARPbartX_fullcond <- function(y.train = NULL,
 
           indiv_ind <- (t1 - 1)*num_indiv+indiv
 
-          list_inter_mats <- list()
+          # list_inter_mats <- list()
+          #
+          # for(i in 1:n.trees){
+          #
+          #   # treeexample1 <- sampler$getTrees(treeNums = i,
+          #   #                                  chainNums = 1,
+          #   #                                  sampleNums = 1)
+          #
+          #   # rebuilt_tree <- rebuildTree2(treeexample1)
+          #
+          #   rebuilt_tree <- rebuilt_tree_list[[i]] # rebuildTree2_cpp(as.matrix(treeexample1))
+          #
+          #   #must use covariates for individual indiv at time period t
+          #
+          #   # list_inter_mats[[i]] <- getPredictionsRangesForTree3(rebuilt_tree, Xmat.train[obs_indices[1],-1, drop = FALSE] )
+          #
+          #   # if num_lags > 1 this would have to be edited (just first column dropped)
+          #
+          #   list_inter_mats[[i]] <- getPredictionsRangesForTree3_cpp((rebuilt_tree),
+          #                                                            as.matrix(Xmat.train[indiv_ind,-1, drop = FALSE]) )
+          #
+          # }
 
-          for(i in 1:n.trees){
+          list_inter_mats <- getListintermats_cpp(rebuilt_tree_list , as.matrix(Xmat.train[indiv_ind,-1, drop = FALSE]))
 
-            treeexample1 <- sampler$getTrees(treeNums = i,
-                                             chainNums = 1,
-                                             sampleNums = 1)
-
-            # rebuilt_tree <- rebuildTree2(treeexample1)
-
-            rebuilt_tree <- rebuildTree2_cpp(as.matrix(treeexample1))
-
-            #must use covariates for individual indiv at time period t
-
-            # list_inter_mats[[i]] <- getPredictionsRangesForTree3(rebuilt_tree, Xmat.train[obs_indices[1],-1, drop = FALSE] )
-
-            # if num_lags > 1 this would have to be edited (just first column dropped)
-
-            list_inter_mats[[i]] <- getPredictionsRangesForTree3_cpp(as.matrix(rebuilt_tree),
-                                                                     as.matrix(Xmat.train[indiv_ind,-1, drop = FALSE]) )
-
-          }
-
-          intersectmat <- interNtreesB(list_inter_mats)
+          intersectmat <- interNtreesB_cpp(list_inter_mats)
 
           # Biglist_intersectmats[[t]] <- intersectmat
 
