@@ -1,5 +1,80 @@
 
 
+normalize_log_probs <- function(logp, iter, indiv, z_iter, t = NA_integer_,
+                                context = "") {
+
+  bad_na <- is.na(logp) | is.nan(logp) | logp == Inf
+
+  if (any(bad_na)) {
+    stop(
+      sprintf(
+        paste0(
+          "Invalid log probability before normalization.\n",
+          "context = %s, iter = %d, z_iter = %d, indiv = %d, t = %s\n",
+          "NA = %d, NaN = %d, +Inf = %d, finite = %d, -Inf = %d"
+        ),
+        context, iter, z_iter, indiv, as.character(t),
+        sum(is.na(logp)),
+        sum(is.nan(logp)),
+        sum(logp == Inf, na.rm = TRUE),
+        sum(is.finite(logp)),
+        sum(logp == -Inf, na.rm = TRUE)
+      ),
+      call. = FALSE
+    )
+  }
+
+  finite <- is.finite(logp)
+
+  if (!any(finite)) {
+    stop(
+      sprintf(
+        paste0(
+          "All candidate regions have zero probability.\n",
+          "context = %s, iter = %d, z_iter = %d, indiv = %d, t = %s"
+        ),
+        context, iter, z_iter, indiv, as.character(t)
+      ),
+      call. = FALSE
+    )
+  }
+
+  m <- max(logp[finite])
+
+  p <- numeric(length(logp))
+  p[finite] <- exp(logp[finite] - m)
+
+  psum <- sum(p)
+
+  if (!is.finite(psum) || psum <= 0) {
+    stop(
+      sprintf(
+        paste0(
+          "Failed to normalize regional probabilities.\n",
+          "context = %s, iter = %d, z_iter = %d, indiv = %d, t = %s, ",
+          "sum(weights) = %g"
+        ),
+        context, iter, z_iter, indiv, as.character(t), psum
+      ),
+      call. = FALSE
+    )
+  }
+
+  p / psum
+}
+
+to_time_major <- function(x) {
+  as.vector(t(x))
+}
+
+from_time_major <- function(x, n_time, n_indiv) {
+  t(matrix(
+    x,
+    nrow = n_indiv,
+    ncol = n_time
+  ))
+}
+
 #' Auto-regressive Probit BART Model with exogenous covariates
 #'
 #' Auto-regressive (of order one) Probit BART Model with exogenous covariates
@@ -61,8 +136,7 @@ ARPbartX_fullcond <- function(y.train = NULL,
                               rngSeed = NA_integer_,
                               updateState = TRUE,
                               print.opt = 100L,
-                              seq_z_draws = 1,
-                              max_z_resamples = 10
+                              seq_z_draws = 1 #, max_z_resamples = 10
 ){
 
 
@@ -95,7 +169,7 @@ ARPbartX_fullcond <- function(y.train = NULL,
   X.test <- as.matrix(X.test)
 
   y.train <- as.matrix(y.train)
-
+  y.vec <- as.vector(t(y.train))
 
   if(nrow(X.train) != ncol(y.train)*nrow(y.train)){
     print("nrow(X.train) = ")
@@ -186,7 +260,7 @@ ARPbartX_fullcond <- function(y.train = NULL,
   num_ones <- sum(y.train)
   prop_ones <- mean(y.train)
 
-  offsetz <- qnorm(prop_ones)
+  offsetz <- 0 # qnorm(prop_ones)
 
   # alternative: individual-specific offsets
   if((indiv.offsets == TRUE)){
@@ -421,7 +495,7 @@ ARPbartX_fullcond <- function(y.train = NULL,
                       data = Xmat.train,
                       test = Xmat.test,
                       control = control,
-                      resid.prior = fixed(1),
+                      resid.prior = fixed(1), node.prior = normal(k_sig_mu),
                       sigma=1 #check if this is the correct approach for setting the variance to 1
     )
   }
@@ -443,9 +517,28 @@ ARPbartX_fullcond <- function(y.train = NULL,
   sampler$setResponse(y = as.vector(Z.vec))
   # sampler$setSigma(sigma = 1)
 
-  min_resp <- min(Z.vec)
-  max_resp <- max(Z.vec)
+  # min_resp <- min(Z.vec)
+  # max_resp <- max(Z.vec)
 
+
+  if (!isTRUE(all.equal(
+    as.numeric(sampler$data@y),
+    as.numeric(Z.vec),
+    tolerance = 0,
+    check.attributes = FALSE
+  ))) {
+    stop(
+      sprintf(
+        "sampler$data@y and Z.vec disagree after setResponse at iteration %d.",
+        iter
+      ),
+      call. = FALSE
+    )
+  }
+
+  min_resp <- min(sampler$data@y)
+  max_resp <- max(sampler$data@y)
+  response_range <- max_resp - min_resp
 
   # scale offsets
   # scale zero
@@ -460,6 +553,55 @@ ARPbartX_fullcond <- function(y.train = NULL,
   #mu = as.vector( alpha + X.mat %*% beta )
   sampler$sampleTreesFromPrior()
   samplestemp <- sampler$run()
+
+  trees_after_run <- sampler$getTrees(
+    chainNums = 1L,
+    sampleNums = 1L
+  )
+
+  leaf_after_run <-
+    trees_after_run$var == -1L
+
+  if (any(trees_after_run$n[leaf_after_run] == 0L)) {
+    stop(
+      sprintf(
+        paste0(
+          "Empty terminal node remains after dbarts run() ",
+          "at Gibbs iteration %d."
+        ),
+        iter
+      ),
+      call. = FALSE
+    )
+  }
+
+  if (any(
+    !is.finite(
+      trees_after_run$value[leaf_after_run]
+    )
+  )) {
+    stop(
+      sprintf(
+        paste0(
+          "Non-finite terminal-node parameter after dbarts run() ",
+          "at Gibbs iteration %d."
+        ),
+        iter
+      ),
+      call. = FALSE
+    )
+  }
+
+  if (anyNA(samplestemp$train) ||
+      any(!is.finite(samplestemp$train))) {
+    stop(
+      sprintf(
+        "Non-finite dbarts fitted value at iteration %d.",
+        iter
+      ),
+      call. = FALSE
+    )
+  }
 
   mutemp <- samplestemp$train[,1]
   #suppose there are a number of samples
@@ -579,6 +721,33 @@ ARPbartX_fullcond <- function(y.train = NULL,
                                          chainNums = 1,
                                          sampleNums = 1)
 
+
+        if (anyNA(treeexample1$value) ||
+            any(!is.finite(treeexample1$value))) {
+
+          stop(
+            sprintf(
+              paste0(
+                "Non-finite value in dbarts tree at ",
+                "iter=%d, tree=%d; ",
+                "rows=%s; var=%s; n=%s; value=%s"
+              ),
+              iter,
+              i,
+              paste(
+                which(
+                  is.na(treeexample1$value) |
+                    !is.finite(treeexample1$value)
+                ),
+                collapse = ","
+              ),
+              paste(treeexample1$var, collapse = ","),
+              paste(treeexample1$n, collapse = ","),
+              paste(treeexample1$value, collapse = ",")
+            ),
+            call. = FALSE
+          )
+        }
         # rebuilt_tree <- rebuildTree2(treeexample1)
 
         rebuilt_tree <- rebuildTree2_cpp(as.matrix(treeexample1))
@@ -589,8 +758,14 @@ ARPbartX_fullcond <- function(y.train = NULL,
 
         # if num_lags > 1 this would have to be edited (just first column dropped)
 
-        list_inter_mats[[i]] <- getPredictionsRangesForTree3_cpp((rebuilt_tree),
-                                                                 as.matrix(Xmat.train[indiv_ind,-1, drop = FALSE]) )
+        # list_inter_mats[[i]] <- getPredictionsRangesForTree3_cpp((rebuilt_tree),
+        #                                                          as.matrix(Xmat.train[indiv_ind,-1, drop = FALSE]) )
+
+        list_inter_mats[[i]] <-
+          getPredictionsRangesForTree3_cpp(
+            as.matrix(rebuilt_tree),
+            as.matrix(temp_test_mat[indiv, , drop = FALSE])
+          )
 
       }
 
@@ -719,24 +894,28 @@ ARPbartX_fullcond <- function(y.train = NULL,
 
     #need to rewrite this if want to allow for no observed covariates
 
-    if(num_lags ==1){
-      # temp_test_mat <-  data.frame(x =  cbind(  temp_test_preds[ , t1] ,
-      #                                           as.matrix(df_for_dbart_test[(t1-1)*(num_indiv)  +  1:(num_indiv), c(-1), drop=FALSE ] )))
 
-      temp_test_mat <-  data.frame(x =  cbind(  temp_test_preds[ , t1] ,
-                                                as.matrix(Xmat.test[(t1-1)*(num_indiv)  +  1:(num_indiv) ,(num_lags+1):(ncol(Xmat.test)), drop=FALSE ] )))
+    if (t1 < num_test_periods) {
 
+      if(num_lags ==1){
+        # temp_test_mat <-  data.frame(x =  cbind(  temp_test_preds[ , t1] ,
+        #                                           as.matrix(df_for_dbart_test[(t1-1)*(num_indiv)  +  1:(num_indiv), c(-1), drop=FALSE ] )))
 
-
-    }else{
-      print("num lags not equal to 1")
-      # temp_test_mat <-  data.frame(x =  cbind(  temp_test_preds[ , t1] , temp_test_mat[,1:(num_lags-1)] ,
-      #                                           as.matrix(df_for_dbart_test[(t1-1)*(num_indiv)  +  1:(num_indiv),c(-1), drop=FALSE ] )))
-
-      temp_test_mat <-  data.frame(x =  cbind(  temp_test_preds[ , t1] , temp_test_mat[,1:(num_lags-1)] ,
-                                                as.matrix(Xmat.test[(t1-1)*(num_indiv)  +  1:(num_indiv) ,(num_lags+1):(ncol(Xmat.test)), drop=FALSE ] )))
+        temp_test_mat <-  data.frame(x =  cbind(  temp_test_preds[ , t1] ,
+                                                  as.matrix(Xmat.test[(t1)*(num_indiv)  +  1:(num_indiv) ,(num_lags+1):(ncol(Xmat.test)), drop=FALSE ] )))
 
 
+
+      }else{
+        print("num lags not equal to 1")
+        # temp_test_mat <-  data.frame(x =  cbind(  temp_test_preds[ , t1] , temp_test_mat[,1:(num_lags-1)] ,
+        #                                           as.matrix(df_for_dbart_test[(t1-1)*(num_indiv)  +  1:(num_indiv),c(-1), drop=FALSE ] )))
+
+        temp_test_mat <-  data.frame(x =  cbind(  temp_test_preds[ , t1] , temp_test_mat[,1:(num_lags-1)] ,
+                                                  as.matrix(Xmat.test[(t1)*(num_indiv)  +  1:(num_indiv) ,(num_lags+1):(ncol(Xmat.test)), drop=FALSE ] )))
+
+
+      }
     }
 
 
@@ -809,12 +988,14 @@ ARPbartX_fullcond <- function(y.train = NULL,
       # print("as.vector(temp_test_mat)[1:((num_test_periods - t)*(n.item*n.ranker))  ]")
       # print(as.vector(as.matrix(temp_test_mat))[1:((num_test_periods - t)*(n.item*n.ranker))  ])
 
-      Zlag.mat.test[,t] <- c(as.vector(Z.mat)[((n.time_train-t)*num_indiv+1):(n.time_train*num_indiv)],
+      # Zlag.mat.test[,t] <- c(as.vector(Z.mat)[((n.time_train-t)*num_indiv+1):(n.time_train*num_indiv)],
+      #                        as.vector(as.matrix(temp_test_mat))[1:((num_test_periods - t)*(num_indiv))  ] )
+      Zlag.mat.test[,t] <- c(as.vector(t(Z.mat))[((n.time_train-t)*num_indiv+1):(n.time_train*num_indiv)],
                              as.vector(as.matrix(temp_test_mat))[1:((num_test_periods - t)*(num_indiv))  ] )
 
     }else{
       #nothing to fill in if num_test_periods <= t
-      Zlag.mat.test[,t] <- c(as.vector(Z.mat)[((n.time_train-t)*num_indiv+1):((n.time_train-(t - num_test_periods) )*num_indiv)]  )
+      Zlag.mat.test[,t] <- c(as.vector(t(Z.mat))[((n.time_train-t)*num_indiv+1):((n.time_train-(t - num_test_periods) )*num_indiv)]  )
 
     }
 
@@ -891,6 +1072,34 @@ ARPbartX_fullcond <- function(y.train = NULL,
       treeexample1 <- sampler$getTrees(treeNums = i,
                                        chainNums = 1,
                                        sampleNums = 1)
+
+
+      if (anyNA(treeexample1$value) ||
+          any(!is.finite(treeexample1$value))) {
+
+        stop(
+          sprintf(
+            paste0(
+              "Non-finite value in dbarts tree at ",
+              "iter=%d, tree=%d; ",
+              "rows=%s; var=%s; n=%s; value=%s"
+            ),
+            iter,
+            i,
+            paste(
+              which(
+                is.na(treeexample1$value) |
+                  !is.finite(treeexample1$value)
+              ),
+              collapse = ","
+            ),
+            paste(treeexample1$var, collapse = ","),
+            paste(treeexample1$n, collapse = ","),
+            paste(treeexample1$value, collapse = ",")
+          ),
+          call. = FALSE
+        )
+      }
 
       # rebuilt_tree <- rebuildTree2(treeexample1)
 
@@ -1177,6 +1386,8 @@ ARPbartX_fullcond <- function(y.train = NULL,
         #                       nrow = num_regions_tmin1,
         #                       ncol = num_regions)
 
+
+
         logprobmattemp <-  matrix(-Inf,
                                   nrow = num_regions_tmin1,
                                   ncol = num_regions)
@@ -1315,6 +1526,58 @@ ARPbartX_fullcond <- function(y.train = NULL,
         }
 
 
+        response_range <- max_resp - min_resp
+
+        if (!is.finite(min_resp) ||
+            !is.finite(max_resp) ||
+            !is.finite(response_range) ||
+            response_range <= 0) {
+
+          stop(
+            sprintf(
+              paste0(
+                "Invalid latent response scale at ",
+                "iter=%d, z_iter=%d, indiv=%d: ",
+                "min_resp=%g, max_resp=%g, range=%g"
+              ),
+              iter,
+              z_iter_ind,
+              indiv,
+              min_resp,
+              max_resp,
+              response_range
+            ),
+            call. = FALSE
+          )
+        }
+
+        if (anyNA(intersectmat[, 1]) ||
+            any(!is.finite(intersectmat[, 1]))) {
+
+          bad_rows <- which(
+            is.na(intersectmat[, 1]) |
+              !is.finite(intersectmat[, 1])
+          )
+
+          stop(
+            sprintf(
+              paste0(
+                "Invalid regional mean before rescaling at ",
+                "iter=%d, z_iter=%d, indiv=%d; ",
+                "bad rows=%s; means=%s; lower=%s; upper=%s"
+              ),
+              iter,
+              z_iter_ind,
+              indiv,
+              paste(bad_rows, collapse = ","),
+              paste(intersectmat[, 1], collapse = ","),
+              paste(intersectmat[, 2], collapse = ","),
+              paste(intersectmat[, 3], collapse = ",")
+            ),
+            call. = FALSE
+          )
+        }
+
 
         # tempmeanfordens <- (temp_mean + 0.5)*(max_resp - min_resp) + min_resp
         tempmeanfordens <- (intersectmat[1:num_regions, 1] + 0.5)*(max_resp - min_resp) + min_resp
@@ -1335,6 +1598,41 @@ ARPbartX_fullcond <- function(y.train = NULL,
                                                                mean = tempmeanfordens[good_regions],
                                                                sd = 1)
 
+
+        q0 <- intersectmat_tmin1[, 4]
+        dens_log <- temp_tnorm_logprobvec[good_regions]
+
+        if (anyNA(q0) || any(q0 < 0) || any(!is.finite(q0) & q0 != 0)) {
+          stop(
+            sprintf(
+              paste0(
+                "Invalid q0 interval mass at iter=%d: ",
+                "q0=%s; lower=%s; upper=%s"
+              ),
+              iter,
+              paste(q0, collapse = ", "),
+              paste(intersectmat_tmin1[, 2], collapse = ", "),
+              paste(intersectmat_tmin1[, 3], collapse = ", ")
+            )
+          )
+        }
+
+        if (anyNA(dens_log) || any(dens_log == Inf)) {
+          stop(
+            sprintf(
+              paste0(
+                "Invalid transition log-density at iter=%d: ",
+                "z_tp1=%g; means=%s; logdens=%s"
+              ),
+              iter,
+              temp_ztp1,
+              paste(tempmeanfordens[good_regions], collapse = ", "),
+              paste(dens_log, collapse = ", ")
+            )
+          )
+        }
+
+
         logprobmattemp[1:num_regions_tmin1, good_regions] <- outer(log(intersectmat_tmin1[1:num_regions_tmin1,4]),
                                                              temp_tnorm_logprobvec[good_regions],
                                                              FUN = "+")
@@ -1347,15 +1645,35 @@ ARPbartX_fullcond <- function(y.train = NULL,
           stop(" line 1868 bounds badly defined")
         }
 
-        logprobstemp <- as.vector(logprobmattemp)
-        max_ll <- max(logprobstemp)
-        logsumexps <- max_ll + log(sum(exp( logprobstemp  -  max_ll )))
-        probstemp <- exp(logprobstemp - logsumexps)
+        # logprobstemp <- as.vector(logprobmattemp)
+        # max_ll <- max(logprobstemp)
+        # logsumexps <- max_ll + log(sum(exp( logprobstemp  -  max_ll )))
+        # probstemp <- exp(logprobstemp - logsumexps)
+        #
+        # region_ind <- sample.int(num_regions_tmin1*num_regions, # (num_regions^2),
+        #                          size = 1,
+        #                          replace = TRUE,
+        #                          prob = probstemp)
 
-        region_ind <- sample.int(num_regions_tmin1*num_regions, # (num_regions^2),
-                                 size = 1,
-                                 replace = TRUE,
-                                 prob = probstemp)
+
+        logprobstemp <- as.vector(logprobmattemp)
+
+        probstemp <- normalize_log_probs(
+          logp = logprobstemp,
+          iter = iter,
+          indiv = indiv,
+          z_iter = z_iter_ind,
+          t = 1L,
+          context = "initial-time joint-region draw"
+        )
+
+        region_ind <- sample.int(
+          num_regions_tmin1 * num_regions,
+          size = 1L,
+          replace = TRUE,
+          prob = probstemp
+        )
+
 
 
         # for(k_ind in 1:num_regions){
@@ -1584,7 +1902,7 @@ ARPbartX_fullcond <- function(y.train = NULL,
         # Z.mat[item_ind,  indiv ] <- zdraw_temp
 
         Z.mat[1,  indiv ] <- zdraw_temp
-
+        Z.vec[indiv] <- zdraw_temp
         #### qkt Begin Loop over time t > 1 ###################
 
         # loop over time periods for general case 1 < t < T
@@ -1611,7 +1929,7 @@ ARPbartX_fullcond <- function(y.train = NULL,
           #                                    item_ind]
 
 
-          temp_ztpmin1 <- as.vector(Z.mat)[(t-2)*num_indiv + indiv]
+          temp_ztpmin1 <- as.vector(t(Z.mat))[(t-2)*num_indiv + indiv]
 
 
           # must find mean corresponding to z in period t-1
@@ -1856,7 +2174,7 @@ ARPbartX_fullcond <- function(y.train = NULL,
             # print("temp_upper3 = ")
             # print(temp_upper3)
 
-            if((temp_lower2 > temp_upper3) | (temp_lower3 > temp_upper2)){
+            if((temp_lower2 >= temp_upper3) | (temp_lower3 >= temp_upper2)){
               # intervals do not overlap, therefore assign probability zero
               # and skip to next iteration
 
@@ -1886,7 +2204,7 @@ ARPbartX_fullcond <- function(y.train = NULL,
             temp_upper2 <- min(temp_upper2, temp_upper3)
 
 
-            if(temp_lower2 > temp_upper2){
+            if(temp_lower2 >= temp_upper2){
 
               print("as.vector(Z.mat)[(t-1)*n.item*n.ranker +
                                               n.item*(indiv - 1) +
@@ -1959,14 +2277,33 @@ ARPbartX_fullcond <- function(y.train = NULL,
 
           # sample a region using probabilities obtained above
 
-          # print("Line 1903 before sample")
-          logprobstemp <- as.vector(temp_region_logprobs[,1])
-          max_ll <- max(logprobstemp)
-          logsumexps <- max_ll + log(sum(exp( logprobstemp  -  max_ll )))
-          probstemp <- exp(logprobstemp - logsumexps)
+          # # print("Line 1903 before sample")
+          # logprobstemp <- as.vector(temp_region_logprobs[,1])
+          # max_ll <- max(logprobstemp)
+          # logsumexps <- max_ll + log(sum(exp( logprobstemp  -  max_ll )))
+          # probstemp <- exp(logprobstemp - logsumexps)
+          #
+          # # region_ind <- sample.int(num_regions, 1, replace = TRUE, prob = temp_region_probs[,1])
+          # region_ind <- sample.int(num_regions, 1, replace = TRUE, prob =probstemp)
 
-          # region_ind <- sample.int(num_regions, 1, replace = TRUE, prob = temp_region_probs[,1])
-          region_ind <- sample.int(num_regions, 1, replace = TRUE, prob =probstemp)
+
+          logprobstemp <- temp_region_logprobs[, 1]
+
+          probstemp <- normalize_log_probs(
+            logp = logprobstemp,
+            iter = iter,
+            indiv = indiv,
+            z_iter = z_iter_ind,
+            t = t,
+            context = "interior-time region draw"
+          )
+
+          region_ind <- sample.int(
+            num_regions,
+            size = 1L,
+            replace = TRUE,
+            prob = probstemp
+          )
 
           # print("Line 1914 after sample")
 
@@ -2139,7 +2476,34 @@ ARPbartX_fullcond <- function(y.train = NULL,
     } # end loop over z_iter_ind
 
 
+    if (anyNA(Z.vec) ||
+        any(!is.finite(Z.vec))) {
+      stop(
+        sprintf(
+          "Non-finite Z at Gibbs iteration %d.",
+          iter
+        ),
+        call. = FALSE
+      )
+    }
 
+    max_abs_Z <- max(abs(Z.vec))
+
+    if (max_abs_Z > 25) {
+      stop(
+        sprintf(
+          paste0(
+            "Latent-state explosion at iteration %d: ",
+            "min(Z)=%.6g, max(Z)=%.6g, max|Z|=%.6g."
+          ),
+          iter,
+          min(Z.vec),
+          max(Z.vec),
+          max_abs_Z
+        ),
+        call. = FALSE
+      )
+    }
     ####### update Z lag matrix ####################
 
 
@@ -2156,101 +2520,136 @@ ARPbartX_fullcond <- function(y.train = NULL,
 
     ######## check that new z values are consistent with the tree structures ###############
 
-    temp_break <- 0
-
     for(j in 1:num_lags){
       # sampler$setPredictor(x = Zlag.mat[,j], column = j, forceUpdate = TRUE)
 
-      while (sampler$setPredictor(x = Zlag.mat[,j], column = j) == FALSE) {
+      sampler$setPredictor(x = Zlag.mat[,j], column = j,
+                                 forceUpdate = TRUE)
 
-        if(seq_z_draws==1){
-          stop("updates still not consistent with tree structure")
-        }
-        # print("new z values not consistent with tree structure, must draw again")
+      # if (!isTRUE(ok)) {
+      #   stop("Forced dbarts predictor update unexpectedly failed.")
+      # }
 
-        # print("current values ")
-        # print("sampler$data@x = ")
-        # print(sampler$data@x)
-        #
-        # print(" Zlag.mat[,j] = ")
-        # print( Zlag.mat[,j])
-
-
-        # If this error message occurs
-        # Check the conditions in the dbart package for setPredictor == FALSE
-        # And if this is hypothetically possible, even with draws from the smoothing distribution,
-        # and if it is not a bug
-        # then need to go back to beginning of this iteration of the Gibbs sampler
-        # and sample Zmat again
-
-
-        temp_break <- 1
-        break
-        # stop("new z values not consistent with tree structure, must draw again")
-
-
-        # #perhaps this can be rewritten to just re-draw the relevant column?
-        # Z.mat <- GibbsUpLatentGivenRankindividual(pair.comp.ten = pair.comp.ten,
-        #                                           Z.mat = Z.mat,
-        #                                           mu = mu,
-        #                                           weight.vec = rep(1, n.ranker*n.time),
-        #                                           n.ranker = n.ranker*n.time,
-        #                                           n.item = n.item )
-        #
-        # Zlag.mat <- matrix(NA, nrow = n.time*n.ranker*n.item, ncol = num_lags)
-        #
-        # for(t in 1:num_lags){
-        #   init_Z_t0 <- rep(0, t*n.item*n.ranker)
-        #   # init_Z_t0 <- rnorm(t*n.item*n.ranker)
-        #
-        #   Zlag.mat[,t] <- c(init_Z_t0, as.vector(Z.mat)[1:((n.time-t)*n.item*n.ranker)])
-        #
-        # }
-        #
-        # #check that Zmat and  Zlag.mat are updated outside the while loop and for-loop over j
-
-      }
-
-      if(temp_break==1){
-        break
-      }
+      Xmat.train[, j + 1L] <- Zlag.mat[, j]
     }
 
-    # print("sampler$data@x = ")
-    # print(sampler$data@x)
+    # temp_break <- 0
+    #
+    # for(j in 1:num_lags){
+    #   # sampler$setPredictor(x = Zlag.mat[,j], column = j, forceUpdate = TRUE)
+    #
+    #   while (sampler$setPredictor(x = Zlag.mat[,j], column = j) == FALSE) {
+    #
+    #     if(seq_z_draws==1){
+    #       stop("updates still not consistent with tree structure")
+    #     }
+    #     # print("new z values not consistent with tree structure, must draw again")
+    #
+    #     # print("current values ")
+    #     # print("sampler$data@x = ")
+    #     # print(sampler$data@x)
+    #     #
+    #     # print(" Zlag.mat[,j] = ")
+    #     # print( Zlag.mat[,j])
+    #
+    #
+    #     # If this error message occurs
+    #     # Check the conditions in the dbart package for setPredictor == FALSE
+    #     # And if this is hypothetically possible, even with draws from the smoothing distribution,
+    #     # and if it is not a bug
+    #     # then need to go back to beginning of this iteration of the Gibbs sampler
+    #     # and sample Zmat again
+    #
+    #
+    #     temp_break <- 1
+    #     break
+    #     # stop("new z values not consistent with tree structure, must draw again")
+    #
+    #
+    #     # #perhaps this can be rewritten to just re-draw the relevant column?
+    #     # Z.mat <- GibbsUpLatentGivenRankindividual(pair.comp.ten = pair.comp.ten,
+    #     #                                           Z.mat = Z.mat,
+    #     #                                           mu = mu,
+    #     #                                           weight.vec = rep(1, n.ranker*n.time),
+    #     #                                           n.ranker = n.ranker*n.time,
+    #     #                                           n.item = n.item )
+    #     #
+    #     # Zlag.mat <- matrix(NA, nrow = n.time*n.ranker*n.item, ncol = num_lags)
+    #     #
+    #     # for(t in 1:num_lags){
+    #     #   init_Z_t0 <- rep(0, t*n.item*n.ranker)
+    #     #   # init_Z_t0 <- rnorm(t*n.item*n.ranker)
+    #     #
+    #     #   Zlag.mat[,t] <- c(init_Z_t0, as.vector(Z.mat)[1:((n.time-t)*n.item*n.ranker)])
+    #     #
+    #     # }
+    #     #
+    #     # #check that Zmat and  Zlag.mat are updated outside the while loop and for-loop over j
+    #
+    #   }
+    #
+    #   if(temp_break==1){
+    #     break
+    #   }
+    # }
+    #
+    # # print("sampler$data@x = ")
+    # # print(sampler$data@x)
+    #
+    # # if need to draw z values again, go back to start of loop
+    # if(temp_break==1){
+    #   # if(breakcount == max_z_resamples){
+    #     Z.mat <- Z.matold
+    #     Z.vec <- as.vector(t(Z.mat))
+    #
+    #     # Zlag.mat <- matrix(NA, nrow = n.time*n.ranker*n.item, ncol = num_lags)
+    #     #
+    #     # for(t in 1:num_lags){
+    #     #   init_Z_t0 <- rep(0, t*n.item*n.ranker)
+    #     #   # init_Z_t0 <- rnorm(t*n.item*n.ranker)
+    #     #
+    #     #   Zlag.mat[,t] <- c(init_Z_t0, as.vector(Z.mat)[1:((n.time-t)*n.item*n.ranker)])
+    #     #
+    #     # }
+    #
+    #     Zlag.mat <- matrix(NA, nrow = n.time_train*num_indiv, ncol = num_lags)
+    #
+    #     for(t in 1:num_lags){
+    #       init_Z_t0 <- rep(0, t*num_indiv)
+    #       # init_Z_t0 <- rnorm(t*n.item*n.ranker)
+    #
+    #       Zlag.mat[,t] <- c(init_Z_t0, Z.vec[1:((n.time_train-t)*num_indiv)])
+    #
+    #     }
+    #
+    #     for(j in 1:num_lags){
+    #       sampler$setPredictor(x = Zlag.mat[,j], column = j#, forceUpdate = TRUE
+    #                            )
+    #     }
+    #     for(j in 1:num_lags){
+    #       Xmat.train[, j + 1L] <- Zlag.mat[, j]
+    #     }
+    #
+    #   # }else{
+    #   #   breakcount <- breakcount +1
+    #   #   next
+    #   # }
+    #
+    # }else{
+    #   # Xmat.train[, j + 1L] <- Zlag.mat[, j]
+    #   for(j in 1:num_lags){
+    #     Xmat.train[, j + 1L] <- Zlag.mat[, j]
+    #   }
+    # }
 
-    # if need to draw z values again, go back to start of loop
-    if(temp_break==1){
-      if(breakcount == max_z_resamples){
-        Z.mat <- Z.matold
-        Z.vec <- as.vector(t(Z.mat))
 
-        # Zlag.mat <- matrix(NA, nrow = n.time*n.ranker*n.item, ncol = num_lags)
-        #
-        # for(t in 1:num_lags){
-        #   init_Z_t0 <- rep(0, t*n.item*n.ranker)
-        #   # init_Z_t0 <- rnorm(t*n.item*n.ranker)
-        #
-        #   Zlag.mat[,t] <- c(init_Z_t0, as.vector(Z.mat)[1:((n.time-t)*n.item*n.ranker)])
-        #
-        # }
-
-        Zlag.mat <- matrix(NA, nrow = n.time_train*num_indiv, ncol = num_lags)
-
-        for(t in 1:num_lags){
-          init_Z_t0 <- rep(0, t*num_indiv)
-          # init_Z_t0 <- rnorm(t*n.item*n.ranker)
-
-          Zlag.mat[,t] <- c(init_Z_t0, Z.vec[1:((n.time_train-t)*num_indiv)])
-
-        }
-
-      }else{
-        breakcount <- breakcount +1
-        next
-      }
-
-    }
+    stopifnot(
+      isTRUE(all.equal(
+        Z.vec,
+        as.vector(t(Z.mat)),
+        tolerance = 0
+      ))
+    )
 
     breakcount <- 0
 
@@ -2262,6 +2661,24 @@ ARPbartX_fullcond <- function(y.train = NULL,
     #set the response.
     #Check that 0 is a reasonable initial value
     #perhaps makes more sense to use initial values of Z
+
+    if (anyNA(Z.vec) || any(!is.finite(Z.vec))) {
+      stop(
+        sprintf(
+          "Non-finite latent value before tree update at Gibbs iteration %d",
+          iter
+        )
+      )
+    }
+
+    if (!isTRUE(all.equal(Z.vec, as.vector(t(Z.mat))))) {
+      stop(
+        sprintf(
+          "Z.vec and Z.mat disagree before tree update at iteration %d",
+          iter
+        )
+      )
+    }
 
     # sampler$setResponse(y = as.vector(Z.mat))
     sampler$setResponse(y = as.vector(Z.vec))
@@ -2284,6 +2701,55 @@ ARPbartX_fullcond <- function(y.train = NULL,
 
     #mu = as.vector( alpha + X.mat %*% beta )
     samplestemp <- sampler$run()
+
+    trees_after_run <- sampler$getTrees(
+      chainNums = 1L,
+      sampleNums = 1L
+    )
+
+    leaf_after_run <-
+      trees_after_run$var == -1L
+
+    if (any(trees_after_run$n[leaf_after_run] == 0L)) {
+      stop(
+        sprintf(
+          paste0(
+            "Empty terminal node remains after dbarts run() ",
+            "at Gibbs iteration %d."
+          ),
+          iter
+        ),
+        call. = FALSE
+      )
+    }
+
+    if (any(
+      !is.finite(
+        trees_after_run$value[leaf_after_run]
+      )
+    )) {
+      stop(
+        sprintf(
+          paste0(
+            "Non-finite terminal-node parameter after dbarts run() ",
+            "at Gibbs iteration %d."
+          ),
+          iter
+        ),
+        call. = FALSE
+      )
+    }
+
+    if (anyNA(samplestemp$train) ||
+        any(!is.finite(samplestemp$train))) {
+      stop(
+        sprintf(
+          "Non-finite dbarts fitted value at iteration %d.",
+          iter
+        ),
+        call. = FALSE
+      )
+    }
 
     mutemp <- samplestemp$train[,1]
     #suppose there are a number of samples
@@ -2616,7 +3082,10 @@ ARPbartX_fullcond <- function(y.train = NULL,
           #
           # }
 
-          list_inter_mats <- getListintermats_cpp(rebuilt_tree_list , as.matrix(Xmat.train[indiv_ind,-1, drop = FALSE]))
+          # list_inter_mats <- getListintermats_cpp(rebuilt_tree_list , as.matrix(Xmat.train[indiv_ind,-1, drop = FALSE]))
+          list_inter_mats <- getListintermats_cpp(rebuilt_tree_list ,
+                                                  as.matrix(temp_test_mat[indiv, , drop = FALSE])
+                                                  )
 
           intersectmat <- interNtreesB_cpp(list_inter_mats)
 
@@ -2765,7 +3234,7 @@ ARPbartX_fullcond <- function(y.train = NULL,
 
         if(keep_zmat==TRUE){
           # draw$Z.mat.test[,,iter_min_burnin]  <- matrix(data = as.vector(temp_test_preds), nrow = n.item, ncol = n.ranker*num_test_periods)
-          draw$Z.mat.test[,,iter_min_burnin]  <- matrix(data = as.vector(temp_test_preds), nrow = num_indiv, ncol = num_test_periods)
+          draw$Z.mat.test[,,iter_min_burnin]  <- t(matrix(data = as.vector(temp_test_preds), nrow = num_indiv, ncol = num_test_periods))
 
         }
       }

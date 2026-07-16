@@ -85,15 +85,27 @@ AROrdPbartX_fullcond <- function(y.train = NULL,
 
   #check that input values are binary 0 or 1.
 
-  if(!(all(is.integer(y.train)))){
-    stop("y.train contains non-integers")
+  # if(!(all(is.integer(y.train)))){
+  #   stop("y.train contains non-integers")
+  # }
+  if (is.null(y.train) ||
+      anyNA(y.train) ||
+      any(!is.finite(y.train)) ||
+      any(y.train != floor(y.train))) {
+    stop("y.train must contain finite, non-missing integer-valued outcomes.")
   }
+
+  y.train <- as.matrix(y.train)
+  storage.mode(y.train) <- "integer"
 
   miny <- min(y.train)
   maxy <- max(y.train)
 
 
   num_categories <- maxy - miny + 1
+  if (num_categories < 3L) {
+    stop("Use the binary-probit function for a two-category outcome.")
+  }
 
   if(!(all(y.train %in% miny:maxy))){
     stop("!(all(y.train %in% miny:maxy))")
@@ -143,9 +155,10 @@ AROrdPbartX_fullcond <- function(y.train = NULL,
 
 
   y.train <- as.matrix(y.train)
+  y.vec <- as.vector(t(y.train))
 
   y.train_from1 <- y.train - miny + 1
-
+  y_from1.vec <- as.vector(t(y.train_from1))
 
 
   num_indiv <- ncol(y.train)
@@ -235,20 +248,53 @@ AROrdPbartX_fullcond <- function(y.train = NULL,
 
 
 
-  # Try naive pooled model (no dynamics, no covariates, just an intercept)
-  temp_ordprobMLE <- MASS::polr(ordered(y.train) ~ 1,
-                                method = "probit")
+  # # Try naive pooled model (no dynamics, no covariates, just an intercept)
+  # temp_ordprobMLE <- MASS::polr(ordered(y.train) ~ 1,
+  #                               method = "probit")
 
-  # MCMCpack multiplies thresholds by 0.588, This is not clear.
-  thresholds <- rep(NA, num_categories-1)
-  # thresholds[1] <- -Inf
-  thresholds[1] <- 0
-  # thresholds[num_categories+1] <- Inf
-  # thresholds[2:(num_categories-1)] <- temp_ordprobMLE$zeta[2:(num_categories-1)]
 
-  # since we set one threshold to for identification, demean by first threhsold from polr function
-  thresholds[2:(num_categories-1)] <- temp_ordprobMLE$zeta[2:(num_categories - 1)] - temp_ordprobMLE$zeta[1]
+  y_levels <- miny:maxy
 
+  y_ord <- ordered(
+    as.vector(y.train),
+    levels = y_levels
+  )
+
+  temp_ordprobMLE <- MASS::polr(
+    y_ord ~ 1,
+    method = "probit",
+    Hess = TRUE
+  )
+  if (length(temp_ordprobMLE$zeta) != num_categories - 1L ||
+      any(!is.finite(temp_ordprobMLE$zeta))) {
+    stop("Invalid threshold estimates returned by MASS::polr().")
+  }
+
+  # # MCMCpack multiplies thresholds by 0.588, This is not clear.
+  # thresholds <- rep(NA, num_categories-1)
+  # # thresholds[1] <- -Inf
+  # thresholds[1] <- 0
+  # # thresholds[num_categories+1] <- Inf
+  # # thresholds[2:(num_categories-1)] <- temp_ordprobMLE$zeta[2:(num_categories-1)]
+  #
+  # # since we set one threshold to for identification, demean by first threhsold from polr function
+  # thresholds[2:(num_categories-1)] <- temp_ordprobMLE$zeta[2:(num_categories - 1)] - temp_ordprobMLE$zeta[1]
+
+
+  thresholds <- numeric(num_categories - 1L)
+  thresholds[1L] <- 0
+
+  if (num_categories > 2L) {
+    thresholds[2:(num_categories - 1L)] <-
+      temp_ordprobMLE$zeta[2:(num_categories - 1L)] -
+      temp_ordprobMLE$zeta[1L]
+  }
+
+  if (length(thresholds) != num_categories - 1L ||
+      any(!is.finite(thresholds)) ||
+      any(diff(thresholds) <= 0)) {
+    stop("Thresholds must be finite and strictly increasing.")
+  }
 
   # ordinalbayes package uses something like
   # alpha.precision <- 1/alpha.var
@@ -296,13 +342,16 @@ AROrdPbartX_fullcond <- function(y.train = NULL,
                                               mean = 0,#offsetz,
                                               sd = 1)
 
-    for(y_ind in (miny+1):(maxy-1)){
-      Z.mat[y.train[,j]== y_ind,j] <- rtruncnorm(n = sum(y.train[,j]== y_ind),
-                                                 a= thresholds[y_ind - miny],
-                                                 b = thresholds[y_ind - miny +1],
-                                                 mean = 0, #offsetz,
-                                                 sd = 1)
 
+    if (num_categories > 2L) {
+      for(y_ind in (miny+1):(maxy-1)){
+        Z.mat[y.train[,j]== y_ind,j] <- rtruncnorm(n = sum(y.train[,j]== y_ind),
+                                                   a= thresholds[y_ind - miny],
+                                                   b = thresholds[y_ind - miny +1],
+                                                   mean = 0, #offsetz,
+                                                   sd = 1)
+
+      }
     }
 
 
@@ -668,8 +717,14 @@ AROrdPbartX_fullcond <- function(y.train = NULL,
 
         # if num_lags > 1 this would have to be edited (just first column dropped)
 
-        list_inter_mats[[i]] <- getPredictionsRangesForTree3_cpp(as.matrix(rebuilt_tree),
-                                                                 as.matrix(Xmat.train[indiv_ind,-1, drop = FALSE]) )
+        # list_inter_mats[[i]] <- getPredictionsRangesForTree3_cpp(as.matrix(rebuilt_tree),
+        #                                                          as.matrix(Xmat.train[indiv_ind,-1, drop = FALSE]) )
+
+        list_inter_mats[[i]] <-
+          getPredictionsRangesForTree3_cpp(
+            as.matrix(rebuilt_tree),
+            as.matrix(temp_test_mat[indiv, , drop = FALSE])
+          )
 
       }
 
@@ -802,18 +857,21 @@ AROrdPbartX_fullcond <- function(y.train = NULL,
       # temp_test_mat <-  data.frame(x =  cbind(  temp_test_preds[ , t1] ,
       #                                           as.matrix(df_for_dbart_test[(t1-1)*(num_indiv)  +  1:(num_indiv), c(-1), drop=FALSE ] )))
 
-      temp_test_mat <-  data.frame(x =  cbind(  temp_test_preds[ , t1] ,
-                                                as.matrix(Xmat.test[(t1-1)*(num_indiv)  +  1:(num_indiv) ,(num_lags+1):(ncol(Xmat.test)), drop=FALSE ] )))
 
-
+      if(t1 < num_test_periods){
+        temp_test_mat <-  data.frame(x =  cbind(  temp_test_preds[ , t1] ,
+                                                  as.matrix(Xmat.test[(t1)*(num_indiv)  +  1:(num_indiv) ,(num_lags+1):(ncol(Xmat.test)), drop=FALSE ] )))
+      }
 
     }else{
       print("num lags not equal to 1")
       # temp_test_mat <-  data.frame(x =  cbind(  temp_test_preds[ , t1] , temp_test_mat[,1:(num_lags-1)] ,
       #                                           as.matrix(df_for_dbart_test[(t1-1)*(num_indiv)  +  1:(num_indiv),c(-1), drop=FALSE ] )))
 
-      temp_test_mat <-  data.frame(x =  cbind(  temp_test_preds[ , t1] , temp_test_mat[,1:(num_lags-1)] ,
-                                                as.matrix(Xmat.test[(t1-1)*(num_indiv)  +  1:(num_indiv) ,(num_lags+1):(ncol(Xmat.test)), drop=FALSE ] )))
+      if(t1 < num_test_periods){
+        temp_test_mat <-  data.frame(x =  cbind(  temp_test_preds[ , t1] , temp_test_mat[,1:(num_lags-1)] ,
+                                                  as.matrix(Xmat.test[(t1)*(num_indiv)  +  1:(num_indiv) ,(num_lags+1):(ncol(Xmat.test)), drop=FALSE ] )))
+      }
 
 
     }
@@ -888,12 +946,14 @@ AROrdPbartX_fullcond <- function(y.train = NULL,
       # print("as.vector(temp_test_mat)[1:((num_test_periods - t)*(n.item*n.ranker))  ]")
       # print(as.vector(as.matrix(temp_test_mat))[1:((num_test_periods - t)*(n.item*n.ranker))  ])
 
-      Zlag.mat.test[,t] <- c(as.vector(Z.mat)[((n.time_train-t)*num_indiv+1):(n.time_train*num_indiv)],
+      # Zlag.mat.test[,t] <- c(as.vector(Z.mat)[((n.time_train-t)*num_indiv+1):(n.time_train*num_indiv)],
+      #                        as.vector(as.matrix(temp_test_mat))[1:((num_test_periods - t)*(num_indiv))  ] )
+      Zlag.mat.test[,t] <- c(as.vector(t(Z.mat))[((n.time_train-t)*num_indiv+1):(n.time_train*num_indiv)],
                              as.vector(as.matrix(temp_test_mat))[1:((num_test_periods - t)*(num_indiv))  ] )
 
     }else{
       #nothing to fill in if num_test_periods <= t
-      Zlag.mat.test[,t] <- c(as.vector(Z.mat)[((n.time_train-t)*num_indiv+1):((n.time_train-(t - num_test_periods) )*num_indiv)]  )
+      Zlag.mat.test[,t] <- c(as.vector(t(Z.mat))[((n.time_train-t)*num_indiv+1):((n.time_train-(t - num_test_periods) )*num_indiv)]  )
 
     }
 
@@ -938,6 +998,31 @@ AROrdPbartX_fullcond <- function(y.train = NULL,
     if(iter > n.burnin){
       iter_min_burnin <- iter - n.burnin
     }
+
+
+    ########## sample threshold parameters #######################
+
+    for(cat_ind in 2:(num_categories-1)){
+      if(cat_ind < num_categories-1){
+        thresholds[cat_ind] <- runif(1,
+                                     min = max(max(Z.vec[y_from1.vec == cat_ind]), thresholds[cat_ind-1]),
+                                     max = min(min(Z.vec[y_from1.vec == cat_ind + 1]), thresholds[cat_ind+1]))
+      }else{
+        thresholds[cat_ind] <- runif(1,
+                                     min = max(max(Z.vec[y_from1.vec == cat_ind]), thresholds[cat_ind-1]),
+                                     max = min(min(Z.vec[y_from1.vec == cat_ind + 1]), Inf))
+      }
+    }
+
+
+    if (thresholds[1L] != 0 ||
+        anyNA(thresholds) ||
+        any(!is.finite(thresholds)) ||
+        any(diff(thresholds) <= 0)) {
+      stop("Thresholds are non-finite, unidentified, or not strictly increasing.")
+    }
+
+    #################################################################
 
 
     # print("Line 454")
@@ -1429,7 +1514,7 @@ AROrdPbartX_fullcond <- function(y.train = NULL,
           # print(temp_upper3)
 
 
-          if((temp_lower2 > temp_upper3) | (temp_lower3 > temp_upper2)){
+          if((temp_lower2 >= temp_upper3) | (temp_lower3 >= temp_upper2)){
             # intervals do not overlap, therefore assign probability zero
             # and skip to next iteration
 
@@ -1457,7 +1542,7 @@ AROrdPbartX_fullcond <- function(y.train = NULL,
           temp_lower2 <- max(temp_lower2, temp_lower3)
           temp_upper2 <- min(temp_upper2, temp_upper3)
 
-          if(temp_lower2 > temp_upper2){
+          if(temp_lower2 >= temp_upper2){
 
             print("as.vector(Z.mat)[(1-1)*n.item*n.ranker +
                                               n.item*(indiv - 1) +
@@ -1473,7 +1558,7 @@ AROrdPbartX_fullcond <- function(y.train = NULL,
             print("rankvec_t = ")
             print(rankvec_t)
 
-            stop("Line 1581 temp_lower2 > temp_upper2")
+            stop("Line 1581 temp_lower2 >= temp_upper2")
           }
 
 
@@ -1595,7 +1680,7 @@ AROrdPbartX_fullcond <- function(y.train = NULL,
         # Z.mat[item_ind,  indiv ] <- zdraw_temp
 
         Z.mat[1,  indiv ] <- zdraw_temp
-
+        Z.vec[indiv] <- zdraw_temp
         #### qkt Begin Loop over time t > 1 ###################
 
         # loop over time periods for general case 1 < t < T
@@ -1622,7 +1707,7 @@ AROrdPbartX_fullcond <- function(y.train = NULL,
           #                                    item_ind]
 
 
-          temp_ztpmin1 <- as.vector(Z.mat)[(t-2)*num_indiv + indiv]
+          temp_ztpmin1 <- as.vector(t(Z.mat))[(t-2)*num_indiv + indiv]
 
 
           # must find mean corresponding to z in period t-1
@@ -1682,7 +1767,7 @@ AROrdPbartX_fullcond <- function(y.train = NULL,
           # }
 
           temp_lower <- c(-Inf,thresholds)[y_tp1] # scalezero # 0
-          temp_lower <- c(thresholds,Inf)[y_tp1]
+          temp_upper <- c(thresholds,Inf)[y_tp1]
 
 
           # rankvec_tp1 <- ranks_mat[,  (t)*n.ranker + indiv]
@@ -1883,12 +1968,12 @@ AROrdPbartX_fullcond <- function(y.train = NULL,
             temp_upper2 <- min(temp_upper2, temp_upper3)
 
 
-            if(temp_lower2 > temp_upper2){
+            if(temp_lower2 >= temp_upper2){
 
-              print("as.vector(Z.mat)[(t-1)*n.item*n.ranker +
+              print("as.vector(t(Z.mat))[(t-1)*n.item*n.ranker +
                                               n.item*(indiv - 1) +
                                               1:n.item]")
-              print(as.vector(Z.mat)[(t-1)*n.item*n.ranker +
+              print(as.vector(t(Z.mat))[(t-1)*n.item*n.ranker +
                                        n.item*(indiv - 1) +
                                        1:n.item])
               print("item_ind = ")
@@ -1904,7 +1989,7 @@ AROrdPbartX_fullcond <- function(y.train = NULL,
               print("temp_upper2 = ")
               print(temp_upper2)
 
-              stop("Line 1917. temp_lower2 > temp_upper2")
+              stop("Line 1917. temp_lower2 >= temp_upper2")
             }
 
 
@@ -2142,101 +2227,137 @@ AROrdPbartX_fullcond <- function(y.train = NULL,
 
     ######## check that new z values are consistent with the tree structures ###############
 
-    temp_break <- 0
-
     for(j in 1:num_lags){
       # sampler$setPredictor(x = Zlag.mat[,j], column = j, forceUpdate = TRUE)
 
-      while (sampler$setPredictor(x = Zlag.mat[,j], column = j) == FALSE) {
+      sampler$setPredictor(x = Zlag.mat[,j], column = j,
+                                 forceUpdate = TRUE)
 
-        if(seq_z_draws==1){
-          stop("updates still not consistent with tree structure")
-        }
-        print("new z values not consistent with tree structure, must draw again")
+      # if (!isTRUE(ok)) {
+      #   stop("Forced dbarts predictor update unexpectedly failed.")
+      # }
 
-        # print("current values ")
-        # print("sampler$data@x = ")
-        # print(sampler$data@x)
-        #
-        # print(" Zlag.mat[,j] = ")
-        # print( Zlag.mat[,j])
-
-
-        # If this error message occurs
-        # Check the conditions in the dbart package for setPredictor == FALSE
-        # And if this is hypothetically possible, even with draws from the smoothing distribution,
-        # and if it is not a bug
-        # then need to go back to beginning of this iteration of the Gibbs sampler
-        # and sample Zmat again
-
-
-        temp_break <- 1
-        break
-        # stop("new z values not consistent with tree structure, must draw again")
-
-
-        # #perhaps this can be rewritten to just re-draw the relevant column?
-        # Z.mat <- GibbsUpLatentGivenRankindividual(pair.comp.ten = pair.comp.ten,
-        #                                           Z.mat = Z.mat,
-        #                                           mu = mu,
-        #                                           weight.vec = rep(1, n.ranker*n.time),
-        #                                           n.ranker = n.ranker*n.time,
-        #                                           n.item = n.item )
-        #
-        # Zlag.mat <- matrix(NA, nrow = n.time*n.ranker*n.item, ncol = num_lags)
-        #
-        # for(t in 1:num_lags){
-        #   init_Z_t0 <- rep(0, t*n.item*n.ranker)
-        #   # init_Z_t0 <- rnorm(t*n.item*n.ranker)
-        #
-        #   Zlag.mat[,t] <- c(init_Z_t0, as.vector(Z.mat)[1:((n.time-t)*n.item*n.ranker)])
-        #
-        # }
-        #
-        # #check that Zmat and  Zlag.mat are updated outside the while loop and for-loop over j
-
-      }
-
-      if(temp_break==1){
-        break
-      }
+      Xmat.train[, j + 1L] <- Zlag.mat[, j]
     }
 
-    # print("sampler$data@x = ")
-    # print(sampler$data@x)
+    # temp_break <- 0
+    #
+    # for(j in 1:num_lags){
+    #   # sampler$setPredictor(x = Zlag.mat[,j], column = j, forceUpdate = TRUE)
+    #
+    #   while (sampler$setPredictor(x = Zlag.mat[,j], column = j) == FALSE) {
+    #
+    #     if(seq_z_draws==1){
+    #       stop("updates still not consistent with tree structure")
+    #     }
+    #     print("new z values not consistent with tree structure, must draw again")
+    #
+    #     # print("current values ")
+    #     # print("sampler$data@x = ")
+    #     # print(sampler$data@x)
+    #     #
+    #     # print(" Zlag.mat[,j] = ")
+    #     # print( Zlag.mat[,j])
+    #
+    #
+    #     # If this error message occurs
+    #     # Check the conditions in the dbart package for setPredictor == FALSE
+    #     # And if this is hypothetically possible, even with draws from the smoothing distribution,
+    #     # and if it is not a bug
+    #     # then need to go back to beginning of this iteration of the Gibbs sampler
+    #     # and sample Zmat again
+    #
+    #
+    #     temp_break <- 1
+    #     break
+    #     # stop("new z values not consistent with tree structure, must draw again")
+    #
+    #
+    #     # #perhaps this can be rewritten to just re-draw the relevant column?
+    #     # Z.mat <- GibbsUpLatentGivenRankindividual(pair.comp.ten = pair.comp.ten,
+    #     #                                           Z.mat = Z.mat,
+    #     #                                           mu = mu,
+    #     #                                           weight.vec = rep(1, n.ranker*n.time),
+    #     #                                           n.ranker = n.ranker*n.time,
+    #     #                                           n.item = n.item )
+    #     #
+    #     # Zlag.mat <- matrix(NA, nrow = n.time*n.ranker*n.item, ncol = num_lags)
+    #     #
+    #     # for(t in 1:num_lags){
+    #     #   init_Z_t0 <- rep(0, t*n.item*n.ranker)
+    #     #   # init_Z_t0 <- rnorm(t*n.item*n.ranker)
+    #     #
+    #     #   Zlag.mat[,t] <- c(init_Z_t0, as.vector(Z.mat)[1:((n.time-t)*n.item*n.ranker)])
+    #     #
+    #     # }
+    #     #
+    #     # #check that Zmat and  Zlag.mat are updated outside the while loop and for-loop over j
+    #
+    #   }
+    #
+    #   if(temp_break==1){
+    #     break
+    #   }
+    # }
+    #
+    # # print("sampler$data@x = ")
+    # # print(sampler$data@x)
+    #
+    # # if need to draw z values again, go back to start of loop
+    # if(temp_break==1){
+    #   # if(breakcount == 10){
+    #     Z.mat <- Z.matold
+    #     Z.vec <- as.vector(t(Z.mat))
+    #
+    #
+    #     # Zlag.mat <- matrix(NA, nrow = n.time*n.ranker*n.item, ncol = num_lags)
+    #     #
+    #     # for(t in 1:num_lags){
+    #     #   init_Z_t0 <- rep(0, t*n.item*n.ranker)
+    #     #   # init_Z_t0 <- rnorm(t*n.item*n.ranker)
+    #     #
+    #     #   Zlag.mat[,t] <- c(init_Z_t0, as.vector(Z.mat)[1:((n.time-t)*n.item*n.ranker)])
+    #     #
+    #     # }
+    #
+    #     Zlag.mat <- matrix(NA, nrow = n.time_train*num_indiv, ncol = num_lags)
+    #
+    #     for(t in 1:num_lags){
+    #       init_Z_t0 <- rep(0, t*num_indiv)
+    #       # init_Z_t0 <- rnorm(t*n.item*n.ranker)
+    #
+    #       Zlag.mat[,t] <- c(init_Z_t0, Z.vec[1:((n.time_train-t)*num_indiv)])
+    #
+    #     }
+    #
+    #     for(j in 1:num_lags){
+    #       sampler$setPredictor(x = Zlag.mat[,j], column = j#, forceUpdate = TRUE
+    #                            )
+    #     }
+    #     for(j in 1:num_lags){
+    #       Xmat.train[, j + 1L] <- Zlag.mat[, j]
+    #     }
+    #
+    #   # }else{
+    #   #   breakcount <- breakcount +1
+    #   #   next
+    #   # }
+    #
+    # }else{
+    #   for(j in 1:num_lags){
+    #     Xmat.train[, j + 1L] <- Zlag.mat[, j]
+    #   }
+    # }
 
-    # if need to draw z values again, go back to start of loop
-    if(temp_break==1){
-      if(breakcount == 10){
-        Z.mat <- Z.matold
-        Z.vec <- as.vector(t(Z.mat))
 
-        # Zlag.mat <- matrix(NA, nrow = n.time*n.ranker*n.item, ncol = num_lags)
-        #
-        # for(t in 1:num_lags){
-        #   init_Z_t0 <- rep(0, t*n.item*n.ranker)
-        #   # init_Z_t0 <- rnorm(t*n.item*n.ranker)
-        #
-        #   Zlag.mat[,t] <- c(init_Z_t0, as.vector(Z.mat)[1:((n.time-t)*n.item*n.ranker)])
-        #
-        # }
+    stopifnot(
+      isTRUE(all.equal(
+        Z.vec,
+        as.vector(t(Z.mat)),
+        tolerance = 0
+      ))
+    )
 
-        Zlag.mat <- matrix(NA, nrow = n.time_train*num_indiv, ncol = num_lags)
-
-        for(t in 1:num_lags){
-          init_Z_t0 <- rep(0, t*num_indiv)
-          # init_Z_t0 <- rnorm(t*n.item*n.ranker)
-
-          Zlag.mat[,t] <- c(init_Z_t0, Z.vec[1:((n.time_train-t)*num_indiv)])
-
-        }
-
-      }else{
-        breakcount <- breakcount +1
-        next
-      }
-
-    }
 
     breakcount <- 0
 
@@ -2317,7 +2438,7 @@ AROrdPbartX_fullcond <- function(y.train = NULL,
 
     ##################### Store iteration output ##################################################
 
-    #remvove this? will be dsaved again later
+    #remove this? will be saved again later
 
     if(iter > n.burnin){
       # store value at this iteration
@@ -2337,6 +2458,9 @@ AROrdPbartX_fullcond <- function(y.train = NULL,
         pnorm( outer( X = - draw$mu[, , iter_min_burnin],  Y =  c(thresholds, Inf ), FUN = "+")  ) -
         pnorm( outer( X = - draw$mu[, , iter_min_burnin],  Y =  c(-Inf,thresholds ), FUN = "+")  )# draw$sigma2.alpha[iter_min_burnin] = sigma2.alpha      # draw$sigma2.alpha[iter_min_burnin] = sigma2.alpha
       # draw$sigma2.beta[iter_min_burnin] = sigma2.beta
+
+      draw$thresholds[,iter_min_burnin] <- thresholds
+
     }
 
 
@@ -2573,8 +2697,14 @@ AROrdPbartX_fullcond <- function(y.train = NULL,
 
             # if num_lags > 1 this would have to be edited (just first column dropped)
 
-            list_inter_mats[[i]] <- getPredictionsRangesForTree3_cpp(as.matrix(rebuilt_tree),
-                                                                     as.matrix(Xmat.train[indiv_ind,-1, drop = FALSE]) )
+            # list_inter_mats[[i]] <- getPredictionsRangesForTree3_cpp(as.matrix(rebuilt_tree),
+            #                                                          as.matrix(Xmat.train[indiv_ind,-1, drop = FALSE]) )
+
+            list_inter_mats[[i]] <-
+              getPredictionsRangesForTree3_cpp(
+                as.matrix(rebuilt_tree),
+                as.matrix(temp_test_mat[indiv, , drop = FALSE])
+              )
 
           }
 
@@ -2727,7 +2857,7 @@ AROrdPbartX_fullcond <- function(y.train = NULL,
 
         if(keep_zmat==TRUE){
           # draw$Z.mat.test[,,iter_min_burnin]  <- matrix(data = as.vector(temp_test_preds), nrow = n.item, ncol = n.ranker*num_test_periods)
-          draw$Z.mat.test[,,iter_min_burnin]  <- matrix(data = as.vector(temp_test_preds), nrow = num_indiv, ncol = num_test_periods)
+          draw$Z.mat.test[,,iter_min_burnin]  <- t(matrix(data = as.vector(temp_test_preds), nrow = num_indiv, ncol = num_test_periods))
 
         }
       }

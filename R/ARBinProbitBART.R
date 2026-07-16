@@ -1217,16 +1217,18 @@ ARPbart_NOCovars_fullcond <- function(y.train = NULL,
     #shift z columns to the right and fill in leftmost column
 
     #need to rewrite this if want to allow for no observed covariates
+    if(t1 < num_test_periods){
 
-    if(num_lags ==1){
-      temp_test_mat <-  data.frame(x =  cbind(  temp_test_preds[ , t1] ,
-                                                as.matrix(df_for_dbart_test[(t1-1)*(num_indiv)  +  1:(num_indiv), c(-1), drop=FALSE ] )))
+      if(num_lags ==1){
+        temp_test_mat <-  data.frame(x =  cbind(  temp_test_preds[ , t1] ,
+                                                  as.matrix(df_for_dbart_test[(t1)*(num_indiv)  +  1:(num_indiv), c(-1), drop=FALSE ] )))
 
-    }else{
-      print("num lags not equal to 1")
-      temp_test_mat <-  data.frame(x =  cbind(  temp_test_preds[ , t1] , temp_test_mat[,1:(num_lags-1)] ,
-                                                as.matrix(df_for_dbart_test[(t1-1)*(num_indiv)  +  1:(num_indiv),c(-1), drop=FALSE ] )))
+      }else{
+        print("num lags not equal to 1")
+        temp_test_mat <-  data.frame(x =  cbind(  temp_test_preds[ , t1] , temp_test_mat[,1:(num_lags-1)] ,
+                                                  as.matrix(df_for_dbart_test[(t1)*(num_indiv)  +  1:(num_indiv),c(-1), drop=FALSE ] )))
 
+      }
     }
 
     if(t1 == num_test_periods){
