@@ -11,6 +11,18 @@ Rcpp::Rostream<true>&  Rcpp::Rcout = Rcpp::Rcpp_cout_get();
 Rcpp::Rostream<false>& Rcpp::Rcerr = Rcpp::Rcpp_cerr_get();
 #endif
 
+// getPredictionsRangesForTreeMCP_cpp
+arma::mat getPredictionsRangesForTreeMCP_cpp(const arma::mat& tree_mat, const arma::mat& x_mat);
+RcppExport SEXP _ARBART_getPredictionsRangesForTreeMCP_cpp(SEXP tree_matSEXP, SEXP x_matSEXP) {
+BEGIN_RCPP
+    Rcpp::RObject rcpp_result_gen;
+    Rcpp::RNGScope rcpp_rngScope_gen;
+    Rcpp::traits::input_parameter< const arma::mat& >::type tree_mat(tree_matSEXP);
+    Rcpp::traits::input_parameter< const arma::mat& >::type x_mat(x_matSEXP);
+    rcpp_result_gen = Rcpp::wrap(getPredictionsRangesForTreeMCP_cpp(tree_mat, x_mat));
+    return rcpp_result_gen;
+END_RCPP
+}
 // rebuildTreeRecurse_cpp
 arma::mat rebuildTreeRecurse_cpp(const arma::mat& tree_mat1, double lower1, double upper1, int rowind, arma::mat tree_mat);
 RcppExport SEXP _ARBART_rebuildTreeRecurse_cpp(SEXP tree_mat1SEXP, SEXP lower1SEXP, SEXP upper1SEXP, SEXP rowindSEXP, SEXP tree_matSEXP) {
@@ -98,6 +110,7 @@ END_RCPP
 }
 
 static const R_CallMethodDef CallEntries[] = {
+    {"_ARBART_getPredictionsRangesForTreeMCP_cpp", (DL_FUNC) &_ARBART_getPredictionsRangesForTreeMCP_cpp, 2},
     {"_ARBART_rebuildTreeRecurse_cpp", (DL_FUNC) &_ARBART_rebuildTreeRecurse_cpp, 5},
     {"_ARBART_rebuildTree2_cpp", (DL_FUNC) &_ARBART_rebuildTree2_cpp, 1},
     {"_ARBART_getPredictionsForTreeRecursive_cpp", (DL_FUNC) &_ARBART_getPredictionsForTreeRecursive_cpp, 3},

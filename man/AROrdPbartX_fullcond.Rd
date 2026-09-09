@@ -7,7 +7,7 @@
 AROrdPbartX_fullcond(
   y.train = NULL,
   X.train = matrix(NA, nrow = nrow(y.train) * ncol(y.train), ncol = 0),
-  X.test = matrix(NA, nrow = 0, ncol = 0),
+  X.test = NULL,
   n.iter = 1000L,
   n.burnin = 100L,
   num_test_periods = 1L,
@@ -18,18 +18,16 @@ AROrdPbartX_fullcond(
   noise_in_pred = 1L,
   n.trees = 50L,
   n.burn = 0L,
-  n.samples = 1L,
-  n.thin = 1L,
-  n.chains = 1L,
-  n.threads = 1L,
   printEvery = 100L,
   printCutoffs = 0L,
   rngKind = "default",
   rngNormalKind = "default",
   rngSeed = NA_integer_,
   updateState = TRUE,
-  print.opt = 100L,
-  seq_z_draws = 1
+  print.opt = printEvery,
+  seq_z_draws = 1,
+  probit_k = 2,
+  reference_half_range = 3
 )
 }
 \arguments{
@@ -54,10 +52,6 @@ AROrdPbartX_fullcond(
 \item{noise_in_pred}{If equal to 1, keep noise in test prediction calculations.}
 
 \item{n.trees}{(dbarts option) A positive integer giving the number of trees used in the sum-of-trees formulation.}
-
-\item{n.chains}{(dbarts option) A positive integer detailing the number of independent chains for the dbarts sampler to use (more than one chain is unlikely to improve speed because only one sample for each call to dbarts).}
-
-\item{n.threads}{(dbarts option) A positive integer controlling how many threads will be used for various internal calculations, as well as the number of chains. Internal calculations are highly optimized so that single-threaded performance tends to be superior unless the number of observations is very large (>10k), so that it is often not necessary to have the number of threads exceed the number of chains.}
 
 \item{printEvery}{(dbarts option)If verbose is TRUE, every printEvery potential samples (after thinning) will issue a verbal statement. Must be a positive integer.}
 

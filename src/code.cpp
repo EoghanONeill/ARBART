@@ -1,9 +1,280 @@
 
-# include <RcppArmadillo.h>
-# include <cmath>
 
+
+# include <RcppArmadillo.h>
 using namespace Rcpp;
 
+# include <cmath>
+#include <cstddef>
+#include <limits>
+#include <vector>
+namespace {
+
+
+struct TerminalRegion
+{
+  double value;
+  double lower;
+  double upper;
+};
+
+
+  /*
+   * Recursively traverses a tree stored in depth-first preorder.
+   *
+   * Parameters
+   * ----------
+   * tree_mat
+   *   Tree matrix. The expected columns are:
+   *
+   *   column 3: split variable
+   *             -1 = terminal node
+   *              1 = latent-lag predictor
+   *             >1 = conditioning/exogenous predictor
+   *
+   *   column 4: terminal value or split point
+   *   column 5: latent-lag lower bound
+   *   column 6: latent-lag upper bound
+   *
+   * start_row
+   *   Zero-based row index of the root of the current subtree.
+   *
+   * go_bool
+   *   TRUE when the current subtree is compatible with the supplied
+   *   conditioning predictors.
+   *
+   * x_mat
+   *   A one-row predictor matrix. Predictor one is the uncertain
+   *   latent lag. Predictors greater than one are conditioned upon.
+   *
+   * terminal_regions
+   *   Output container. A row is appended whenever a compatible
+   *   terminal node is reached.
+   *
+   * Returns
+   * -------
+   * Number of rows/nodes in the current subtree.
+   */
+  std::size_t
+  getPredictionsForTreeRecursive_impl(
+    const arma::mat& tree_mat,
+    const std::size_t start_row,
+    const bool go_bool,
+    const arma::mat& x_mat,
+    std::vector<TerminalRegion>& terminal_regions)
+  {
+    if (start_row >= tree_mat.n_rows) {
+      Rcpp::stop("Tree traversal reached a row outside tree_mat.");
+    }
+
+    const double split_variable_raw = tree_mat(start_row, 3);
+
+    if (!std::isfinite(split_variable_raw)) {
+      Rcpp::stop("Tree contains a non-finite split-variable value.");
+    }
+
+    const int split_variable = static_cast<int>(split_variable_raw);
+    /* Terminal node. */
+    if (split_variable == -1) {
+      if (go_bool) {
+        const double terminal_value = tree_mat(start_row, 4);
+        const double lower_bound = tree_mat(start_row, 5);
+        const double upper_bound = tree_mat(start_row, 6);
+        if (!std::isfinite(terminal_value) || std::isnan(lower_bound) || std::isnan(upper_bound)) {
+          Rcpp::stop("Compatible terminal node contains invalid values.");
+        }
+        if (lower_bound >= upper_bound) {Rcpp::stop("Compatible terminal node has lower >= upper.");}
+        TerminalRegion region;
+        region.value = terminal_value;
+        region.lower = lower_bound;
+        region.upper = upper_bound;
+        terminal_regions.push_back(region);
+      }
+      // A terminal subtree consists of one node.
+      return 1U;
+    }
+
+    if (split_variable < 1) {
+      Rcpp::stop("Nonterminal node has an invalid split-variable index.");
+    }
+
+    /* * The left child immediately follows the current node in   * preorder storage. */
+    const std::size_t left_start = start_row + 1U;
+
+    if (left_start >= tree_mat.n_rows) {
+      Rcpp::stop("Nonterminal node has no left child.");
+    }
+
+    /* * Split on predictor one: the uncertain latent lag. *
+     * * Do not condition on its current numerical value. Traverse both
+     * branches so that all intervals of the lag dimension are retained.
+     */
+    if (split_variable == 1) {
+      const std::size_t num_nodes_left =
+        getPredictionsForTreeRecursive_impl(
+          tree_mat,
+          left_start,
+          go_bool,
+          x_mat,
+          terminal_regions
+        );
+
+      const std::size_t right_start = left_start + num_nodes_left;
+      if (right_start >= tree_mat.n_rows) {
+        Rcpp::stop("Lag-splitting node has no valid right child.");
+      }
+
+      const std::size_t num_nodes_right =
+        getPredictionsForTreeRecursive_impl(
+          tree_mat,
+          right_start,
+          go_bool,
+          x_mat,
+          terminal_regions
+        );
+
+      return 1U + num_nodes_left + num_nodes_right;
+    }
+
+
+    /*
+     * Split on a conditioning predictor. *
+     * Extracted dbarts split variables are assumed to be one-based.
+     * Hence split_variable - 1 is the zero-based x_mat column.
+     */
+    const std::size_t predictor_column = static_cast<std::size_t>( split_variable - 1 );
+
+    if (predictor_column >= x_mat.n_cols) {
+      Rcpp::stop( "Tree split-variable index exceeds the number of predictors." );
+    }
+
+    const double predictor_value = x_mat(0, predictor_column);
+
+    const double split_point = tree_mat(start_row, 4);
+
+    if (!std::isfinite(predictor_value) || !std::isfinite(split_point) ) {
+      Rcpp::stop( "Non-finite predictor value or split point." );
+    }
+
+    const bool goes_left = predictor_value <= split_point;
+
+
+    /* * We must still traverse both subtrees to determine their sizes. *
+     * Only the branch compatible with the conditioning predictor keeps
+     * go_bool equal to TRUE. Terminal nodes in the incompatible branch
+     * are therefore not appended to terminal_regions.
+     */
+    const std::size_t num_nodes_left =
+      getPredictionsForTreeRecursive_impl(
+        tree_mat,
+        left_start,
+        go_bool &&
+          goes_left,
+          x_mat,
+          terminal_regions
+      );
+
+    const std::size_t right_start = left_start + num_nodes_left;
+
+    if (right_start >= tree_mat.n_rows) {
+      Rcpp::stop( "Conditioning split has no valid right child." );
+    }
+
+    const std::size_t num_nodes_right =
+      getPredictionsForTreeRecursive_impl(
+        tree_mat,
+        right_start,
+        go_bool &&
+          !goes_left,
+          x_mat,
+          terminal_regions
+      );
+
+    return 1U + num_nodes_left + num_nodes_right;
+  }
+} // anonymous namespace
+
+
+// [[Rcpp::export]]
+arma::mat getPredictionsRangesForTreeMCP_cpp( const arma::mat& tree_mat, const arma::mat& x_mat)
+{
+  if (tree_mat.n_rows == 0U) { Rcpp::stop( "tree_mat must contain at least one node." ); }
+  if (tree_mat.n_cols < 7U) { Rcpp::stop( "tree_mat must contain at least seven columns." ); }
+  if (x_mat.n_rows != 1U) { Rcpp::stop( "x_mat must contain exactly one predictor row." ); }
+  if (x_mat.n_cols == 0U) { Rcpp::stop( "x_mat must contain at least the latent-lag predictor." ); }
+
+  std::vector<TerminalRegion> terminal_regions;
+
+  /* * A binary tree with n nodes can contain at most (n + 1) / 2
+   * terminal nodes. Reserving capacity avoids repeated reallocations.
+   */
+  terminal_regions.reserve( ( tree_mat.n_rows + 1U ) / 2U );
+
+  const std::size_t num_nodes_visited =
+    getPredictionsForTreeRecursive_impl(
+      tree_mat,
+      0U,
+      true,
+      x_mat,
+      terminal_regions
+    );
+
+
+  /* * For a valid preorder representation, traversing the root subtree
+   * should consume every row of the tree matrix.
+   */
+  if (num_nodes_visited != tree_mat.n_rows) { Rcpp::stop( "Tree traversal did not consume every row of tree_mat." ); }
+
+  if (terminal_regions.empty()) { Rcpp::stop( "No terminal region is compatible with the predictor row." ); }
+  arma::mat outputmat( terminal_regions.size(), 3U );
+
+  for ( std::size_t index = 0U; index < terminal_regions.size(); ++index ) {
+    outputmat(index, 0U) = terminal_regions[index].value;
+    outputmat(index, 1U) = terminal_regions[index].lower;
+    outputmat(index, 2U) = terminal_regions[index].upper;
+  }
+
+
+  /*
+   * The depth-first traversal should normally return lag intervals in
+   * left-to-right order. Sorting by lower bound makes that contract
+   * explicit and protects downstream lookup code.
+   */
+  const arma::uvec ordering = arma::sort_index( outputmat.col(1U) );
+
+  outputmat = outputmat.rows( ordering );
+
+
+  /* * Validate the returned intervals. */
+  for (arma::uword row = 0U; row < outputmat.n_rows; ++row ) {
+    if ( !std::isfinite( outputmat(row, 0U) ) || std::isnan( outputmat(row, 1U) ) || std::isnan(outputmat(row, 2U))) {
+      Rcpp::stop("Returned terminal-region matrix contains invalid values.");
+    }
+    if (outputmat(row, 1U) >= outputmat(row, 2U) ) {
+      Rcpp::stop("Returned terminal region has lower >= upper.");
+    }
+  }
+
+
+  /*
+   * Conditional on the exogenous predictors, the terminal regions of
+   * one tree should normally form a contiguous partition of the lag
+   * axis. The tolerance allows for floating-point representation.
+   */
+  const double tolerance = 100.0 * std::numeric_limits<double>::epsilon();
+  for ( arma::uword row = 1U;row < outputmat.n_rows; ++row ) {
+    const double preceding_upper = outputmat( row - 1U,2U);
+    const double current_lower = outputmat(row,1U);
+    const double scale = 1.0 + std::max( std::abs(preceding_upper),std::abs(current_lower));
+    if (std::isfinite(preceding_upper) && std::isfinite( current_lower) &&
+        std::abs( preceding_upper - current_lower) > tolerance * scale) {
+      Rcpp::stop("Returned lag regions are not contiguous.");
+    }
+  }
+
+
+  return outputmat;
+}
 
 
 // [[Rcpp::depends(RcppArmadillo)]]
@@ -192,7 +463,7 @@ arma::field<arma::mat> getPredictionsForTreeRecursive_cpp(arma::field<arma::mat>
   arma::mat tree_mat = outputF(0);
   arma::mat outputmat = outputF(1);
 
-  tree_mat(0, 7) = 0;
+  // tree_mat(0, 7) = 0;
 
 
   if(tree_mat(0,3) == -1){
@@ -259,11 +530,10 @@ arma::field<arma::mat> getPredictionsForTreeRecursive_cpp(arma::field<arma::mat>
 
 
     if(gobool){
-
       arma::mat emptyrow(1 , 3);
       emptyrow.fill(arma::datum::nan);
-      outputmat = arma::join_rows(outputmat,emptyrow );
-
+      // outputmat = arma::join_rows(outputmat,emptyrow );
+      outputmat = arma::join_cols(outputmat,emptyrow );
     }
 
     //
@@ -422,7 +692,12 @@ arma::field<arma::mat> getPredictionsForTreeRecursive_cpp(arma::field<arma::mat>
     // tree_mat(0, 7) = 1 + n_nodesleft + n_nodesright ;
     outputF(0) = tree_mat;
     outputF(1) = outputmat;
+    return(outputF);
+
   }
+
+  Rcpp::stop("Invalid split-variable code in tree_mat." );
+
 
   // Rcout << "line 402 . \n";
 
@@ -454,14 +729,19 @@ arma::mat getPredictionsRangesForTree3_cpp(const arma::mat& tree_mat, const arma
   arma::mat emptycols(tree_mat.n_rows , 2);
   emptycols.fill(arma::datum::nan);
 
-
+  // if (tree_mat.n_cols != 7) {
+  //   Rcpp::stop(
+  //     "tree_mat must contain exactly seven columns."
+  //   );
+  // }
   // Rcout << "line 433 . \n";
 
   arma::mat tree_mat1 = arma::join_rows(tree_mat, emptycols);
   // arma::mat tree_mat1 = tree_mat;
 
-  tree_mat1(0,tree_mat1.n_cols-1) = 0;
-
+  // tree_mat1(0,tree_mat1.n_cols-1) = 0;
+  tree_mat1(0, 7) = 0;
+  tree_mat1(0, 8) = 0;
   // Rcout << "tree_mat1(0, 7) = " << tree_mat1(0, 7) << ". \n";
 
 
@@ -498,7 +778,7 @@ arma::field<arma::mat> getListintermats_cpp(const arma::field<arma::mat>& rebuil
 
   for(unsigned int list_ind=0; list_ind < rebuilt_tree_list.n_elem; list_ind++){
 
-    output_list(list_ind) = getPredictionsRangesForTree3_cpp(rebuilt_tree_list(list_ind),
+    output_list(list_ind) = getPredictionsRangesForTreeMCP_cpp(rebuilt_tree_list(list_ind),
                 x_mat);
   }
 

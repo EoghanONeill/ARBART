@@ -616,7 +616,7 @@ ARPbart_NOCovars_fullcond <- function(y.train = NULL,
                                           n.thin = 1L,
                                           n.chains = 1L,
                                           n.threads = 1L,#guessNumCores(),
-                                          printEvery = 100L,
+                                          # printEvery = 100L,
                                           printCutoffs = 0L,
                                           rngKind = "default",
                                           rngNormalKind = "default",
@@ -714,24 +714,46 @@ ARPbart_NOCovars_fullcond <- function(y.train = NULL,
   offsetz <- qnorm(prop_ones)
 
   # alternative: individual-specific offsets
+  # if((indiv.offsets == TRUE)){
+  #   if(num_indiv > 1){
+  #     num_ones_vec <- apply(y.train,2,sum)
+  #     prop_ones_vec <- apply(y.train,2,mean)
+  #     offsetz_vec <- qnorm(prop_ones_vec) # rep(0,num_indiv) #
+  #   }else{
+  #     offsetz_vec <- rep(offsetz, num_indiv)
+  #     num_ones_vec <- as.vector(sum(y.train))
+  #     prop_ones_vec <- as.vector(mean(y.train))
+  #   }
+  #
+  # }else{
+  #   offsetz_vec <- rep(offsetz, num_indiv)
+  #   num_ones_vec <- as.vector(sum(y.train))
+  #   prop_ones_vec <- as.vector(mean(y.train))
+  # }
+
   if((indiv.offsets == TRUE)){
+    stop("The code currently does not support indiv.offsets == TRUE")
     if(num_indiv > 1){
       num_ones_vec <- apply(y.train,2,sum)
       prop_ones_vec <- apply(y.train,2,mean)
       offsetz_vec <- qnorm(prop_ones_vec) # rep(0,num_indiv) #
+      genuine_offset_vec <- rep(offsetz_vec, n.time_train)
+      genuine_offset_test <- rep(offsetz_vec, num_test_periods)
     }else{
-      offsetz_vec <- rep(offsetz, num_indiv)
+      # genuine_offset_vec <- rep(offsetz, num_indiv)
+      offsetz_vec <- c(offsetz)
+      genuine_offset_vec <- rep(offsetz, num_indiv*n.time_train)
+      genuine_offset_test <- rep(offsetz, num_indiv*num_test_periods)
       num_ones_vec <- as.vector(sum(y.train))
       prop_ones_vec <- as.vector(mean(y.train))
     }
-
   }else{
     offsetz_vec <- rep(offsetz, num_indiv)
+    genuine_offset_vec <- rep(offsetz, num_indiv*n.time_train)
+    genuine_offset_test <- rep(offsetz, num_indiv*num_test_periods)
     num_ones_vec <- as.vector(sum(y.train))
     prop_ones_vec <- as.vector(mean(y.train))
   }
-
-
 
 
   # # fully vectorized, but does not allow for individual-specific offsets
@@ -788,15 +810,42 @@ ARPbart_NOCovars_fullcond <- function(y.train = NULL,
   # print("Z.mat = ")
   # print(Z.mat)
 
-  Z.mat.test =  matrix(rnorm(num_test_periods*num_indiv),
-                       nrow = num_test_periods,
-                       ncol = num_indiv)
+  # Z.mat.test =  matrix(rnorm(num_test_periods*num_indiv),
+  #                      nrow = num_test_periods,
+  #                      ncol = num_indiv)
+  #
+  #
+  # # if num_indiv > 1, must vectorize for input to dbarts
+  # # the vectorized matrix might be more convenient to work with if each time period is a continguous block?
+  # Z.vec <- as.vector(t(Z.mat))
+  # Z.vec.test <- as.vector(t(Z.mat.test))
 
-
+  Z.mat.test =  matrix(rnorm(num_test_periods*num_indiv), nrow = num_test_periods, ncol = num_indiv)
   # if num_indiv > 1, must vectorize for input to dbarts
   # the vectorized matrix might be more convenient to work with if each time period is a continguous block?
   Z.vec <- as.vector(t(Z.mat))
   Z.vec.test <- as.vector(t(Z.mat.test))
+  z_init_half_range <- 3.0 # 0.5
+  Z_initial <- ifelse(Z.vec > 0, z_init_half_range, - 1*z_init_half_range)
+  Z_reference <- Z.vec # Z_initial # as.numeric(Z.vec)
+  scale_min_fixed <- min(Z_reference)
+  scale_max_fixed <- max(Z_reference)
+  scale_range_fixed <- scale_max_fixed - scale_min_fixed
+  computational_offset <- Z_reference - Z_initial
+  dbarts_offset <- computational_offset + genuine_offset_vec
+
+
+  min_resp <- scale_min_fixed # min(sampler$data@y)
+  max_resp <- scale_max_fixed # max(sampler$data@y)
+  response_range <- scale_range_fixed # max_resp - min_resp
+
+  if (!isTRUE(all.equal(scale_min_fixed, -reference_half_range)) ||!isTRUE(all.equal(scale_max_fixed,  reference_half_range)) ||!isTRUE(all.equal(scale_range_fixed, 2*reference_half_range))) {
+    stop(paste0("Initial reference response must have fixed range ","[-reference_half_range, reference_half_range]."),call. = FALSE)
+  }
+
+
+  Z.mat <- matrix( Z_initial,nrow = n.time_train, ncol = num_indiv, byrow = TRUE)
+  Z.vec <- as.vector(t(Z.mat))
 
 
   ## initial values
@@ -868,7 +917,8 @@ ARPbart_NOCovars_fullcond <- function(y.train = NULL,
   # }
 
 
-  df_for_dbart <- data.frame(y = as.vector(Z.vec), x = as.matrix(Zlag.mat) )
+  df_for_dbart <- data.frame(y = as.vector(Z_reference), # as.vector(Z.vec),
+                             x = as.matrix(Zlag.mat) )
 
   control <- dbartsControl(updateState = updateState, verbose = FALSE,  keepTrainingFits = TRUE,
                            keepTrees = TRUE,
@@ -878,12 +928,13 @@ ARPbart_NOCovars_fullcond <- function(y.train = NULL,
                            n.thin = n.thin,
                            n.chains = n.chains,
                            n.threads = n.threads,
-                           printEvery = printEvery,
+                           printEvery = 1L, verbose = FALSE,
                            printCutoffs = printCutoffs,
                            rngKind = rngKind,
                            rngNormalKind = rngNormalKind,
                            rngSeed = rngSeed)
 
+  k_sig_mu <- reference_half_range*probit_k/3.0
 
   # print(colnames(Xmat.train))
   # print(colnames(Xmat.test))
@@ -896,7 +947,7 @@ ARPbart_NOCovars_fullcond <- function(y.train = NULL,
                     data = df_for_dbart,
                     #test = Xmat.test,
                     control = control,
-                    resid.prior = fixed(1),
+                    resid.prior = fixed(1),  node.prior = normal(k_sig_mu),
                     sigma=1 #check if this is the correct approach for setting the variance to 1
   )
 
@@ -909,40 +960,62 @@ ARPbart_NOCovars_fullcond <- function(y.train = NULL,
   # print("sampler$state[[1]]@trees = ")
   # print(sampler$state[[1]]@trees)
 
-  # print("Line 321")
-  #set the response.
-  #Check that 0 is a reasonable initial value
-  #perhaps makes more sense to use initial values of Z
-  sampler$setResponse(y = as.vector(Z.vec))
+  # # print("Line 321")
+  # #set the response.
+  # #Check that 0 is a reasonable initial value
+  # #perhaps makes more sense to use initial values of Z
+  # sampler$setResponse(y = as.vector(Z.vec))
+  # # sampler$setSigma(sigma = 1)
+  #
+  # min_resp <- min(Z.vec)
+  # max_resp <- max(Z.vec)
+  #
+  #
+  # # scale offsets
+  # # scale zero
+  #
+  # scalezero <- (0 - min_resp)/(max_resp - min_resp) - 0.5
+  # scaled_offsetz_vec <- (offsetz_vec - min_resp)/(max_resp - min_resp) - 0.5
+
+  computational_offset <- Z_reference - Z_initial
+  dbarts_offset <- computational_offset + genuine_offset_vec
+
+  sampler$setOffset(offset = dbarts_offset, updateScale = FALSE )
+  sampler$setTestOffset(offset = genuine_offset_test#,updateScale = FALSE
+  )
   # sampler$setSigma(sigma = 1)
+  # min_resp <- min(Z.vec)
+  # max_resp <- max(Z.vec)
+  if (!isTRUE(all.equal(as.numeric(sampler$data@y),as.numeric(Z_reference),tolerance = 0,check.attributes = FALSE))) {
+    stop(sprintf("sampler$data@y changed from the fixed refererce response.",0),call. = FALSE)
+  }
 
-  min_resp <- min(Z.vec)
-  max_resp <- max(Z.vec)
+  bart_target <- Z.vec - genuine_offset_vec
+  reconstructed_target <- Z_reference - dbarts_offset
 
-
-  # scale offsets
-  # scale zero
-
-  scalezero <- (0 - min_resp)/(max_resp - min_resp) - 0.5
-  scaled_offsetz_vec <- (offsetz_vec - min_resp)/(max_resp - min_resp) - 0.5
-
-
+  if (!isTRUE(all.equal(reconstructed_target,bart_target,tolerance =100 *.Machine$double.eps,check.attributes =FALSE))) {
+    stop(paste0("The dbarts offset does not reproduce ","the intended BART partial response."),call. = FALSE)
+  }
 
   #sampler$setPredictor(x= Xmat.train, column = 1, forceUpdate = TRUE)
 
   #mu = as.vector( alpha + X.mat %*% beta )
-  sampler$sampleTreesFromPrior()
+  # sampler$sampleTreesFromPrior()
   samplestemp <- sampler$run()
-
-  mutemp <- samplestemp$train[,1]
-  #suppose there are a number of samples
-
-  # print("sigma = ")
-  # print(samplestemp$sigma)
-
-  # mupreds <- sampler$predict(Xmat.train)
-
+  f_train <- as.numeric(samplestemp$train[, 1L]) - dbarts_offset
+  mutemp <- genuine_offset_vec + f_train
   mu <- mutemp
+  Xmat.train <- as.matrix(Xmat.train)
+
+  # mutemp <- samplestemp$train[,1]
+  # #suppose there are a number of samples
+  #
+  # # print("sigma = ")
+  # # print(samplestemp$sigma)
+  #
+  # # mupreds <- sampler$predict(Xmat.train)
+  #
+  # mu <- mutemp
 
 
   # print("line 919")
@@ -1964,8 +2037,6 @@ ARPbart_NOCovars_fullcond <- function(y.train = NULL,
           #                                     aboverank_ind]
           # }
 
-
-
           if(y_t == 1){
             temp_lower3 <- 0 # scalezero # 0
             temp_upper3 <- Inf
@@ -1974,9 +2045,7 @@ ARPbart_NOCovars_fullcond <- function(y.train = NULL,
             temp_upper3 <- 0 # scalezero # 0
           }
 
-
           # tempzfordens <- (temp_ztp1 + offsetz_vec[indiv] - min_resp)/(max_resp - min_resp) - 0.5
-
 
           tempmeanfordens <- (intersectmat[1:num_regions, 1] + 0.5)*(max_resp - min_resp) + min_resp
 
@@ -1999,7 +2068,6 @@ ARPbart_NOCovars_fullcond <- function(y.train = NULL,
             #                               mean = temp_mean,
             #                               sd = 1)
 
-
             # temp_tnorm_prob <- fastnormdens(temp_ztp1,
             #                          mean = temp_mean,
             #                          sd = 1)
@@ -2011,83 +2079,38 @@ ARPbart_NOCovars_fullcond <- function(y.train = NULL,
             # and region defined by period t latent variables for other individuals
             # and rank for period t
 
-
             # tildeC_ktminl corresponds to
             # period t+1 k_ind region intereval
 
             temp_lower2 <- intersectmat[k_ind, 2]
             temp_upper2 <- intersectmat[k_ind, 3]
 
-
-
-            # print("temp_lower2 = ")
-            # print(temp_lower2)
-            #
-            # print("temp_upper2 = ")
-            # print(temp_upper2)
-            #
-            # print("temp_lower3 = ")
-            # print(temp_lower3)
-            #
-            # print("temp_upper3 = ")
-            # print(temp_upper3)
-
-
             if((temp_lower2 > temp_upper3) | (temp_lower3 > temp_upper2)){
               # intervals do not overlap, therefore assign probability zero
               # and skip to next iteration
-
               # print("k_ind = ")
               # print(k_ind)
-
               # print("ncol(temp_region_probs) = ")
               # print(ncol(temp_region_probs))
-
               # print("nrow(temp_region_probs) = ")
               # print(nrow(temp_region_probs))
 
               temp_region_probs[k_ind, 1] <- 0
               temp_region_probs[k_ind, 2] <- NA
               temp_region_probs[k_ind, 3] <- NA
-
-
               next
             }
-
-
             # print("Line 1163")
             temp_lower2 <- max(temp_lower2, temp_lower3)
             temp_upper2 <- min(temp_upper2, temp_upper3)
-
-
             if(temp_lower2 > temp_upper2){
-
-              print("as.vector(Z.mat)[(t-1)*n.item*n.ranker +
-                                            n.item*(indiv - 1) +
-                                            1:n.item]")
-              print(as.vector(Z.mat)[(t-1)*n.item*n.ranker +
-                                       n.item*(indiv - 1) +
-                                       1:n.item])
-              print("item_ind = ")
-              print(item_ind)
-
-              print("rankvec_t = ")
-              print(rankvec_t)
-
-
               print("temp_lower2 = ")
               print(temp_lower2)
-
               print("temp_upper2 = ")
               print(temp_upper2)
-
               stop("Line 1917. temp_lower2 > temp_upper2")
             }
-
-
-
             # probability of being in intersection region
-
             # prob_t_region <- pnorm(temp_upper2 - temp_mean2) - pnorm(temp_lower2 - temp_mean2)
 
 
@@ -2117,12 +2140,9 @@ ARPbart_NOCovars_fullcond <- function(y.train = NULL,
 
             # print("prob_t_region = ")
             # print(prob_t_region)
-
             temp_region_probs[k_ind, 1] <- prob_t_region
             temp_region_probs[k_ind, 2] <- temp_lower2
             temp_region_probs[k_ind, 3] <- temp_upper2
-
-
           }
 
 
@@ -2149,8 +2169,6 @@ ARPbart_NOCovars_fullcond <- function(y.train = NULL,
           #
           # print("line 2061 temp_mean2_origscale = ")
           # print(temp_mean2_origscale)
-
-
 
           # temp_lower0 <- (temp_region_probs[region_ind, 2] + 0.5)*(max_resp - min_resp) + min_resp
           # temp_upper0 <- (temp_region_probs[region_ind, 3] + 0.5)*(max_resp - min_resp) + min_resp
@@ -2186,8 +2204,6 @@ ARPbart_NOCovars_fullcond <- function(y.train = NULL,
           # jusyt need to update relevant element of Z.vec
           Z.vec[(t-1)*num_indiv + indiv] <- zdraw_temp
           # Z.vec <- as.vetor(t(Z.mat))
-
-
 
         } # end loop over time periods
 
@@ -2229,8 +2245,6 @@ ARPbart_NOCovars_fullcond <- function(y.train = NULL,
 
         y_t <- y.train[n.time_train,indiv]
 
-
-
         # # inds for j ranked below i in T
         #
         # belowrank_ind <- which(rankvec_t == rankvec_t[item_ind] - 1 )
@@ -2269,7 +2283,6 @@ ARPbart_NOCovars_fullcond <- function(y.train = NULL,
           temp_upper3 <- 0 # scalezero # 0
         }
 
-
         # print("Line 1343")
         # CHECK IF THESE BOUNDS ARE CORRECTLY DEFINED
 
@@ -2283,11 +2296,8 @@ ARPbart_NOCovars_fullcond <- function(y.train = NULL,
         # print("line 2061 temp_mean2_origscale = ")
         # print(temp_mean2_origscale)
 
-
-
         temp_lower0 <- temp_lower3 # (temp_lower3 + 0.5)*(max_resp - min_resp) + min_resp
         temp_upper0 <- temp_upper3 # (temp_upper3 + 0.5)*(max_resp - min_resp) + min_resp
-
 
         zdraw_temp <- rtruncnorm(n = 1,
                                  a = temp_lower0,
@@ -2318,8 +2328,6 @@ ARPbart_NOCovars_fullcond <- function(y.train = NULL,
         # just need to update relevant element of Z.vec
         Z.vec[(n.time_train-1)*num_indiv + indiv] <- zdraw_temp
         # Z.vec <- as.vetor(t(Z.mat))
-
-
       # } # end loop over items
 
       } # end loop over individuals indiv in 1:num_indiv
@@ -2327,26 +2335,16 @@ ARPbart_NOCovars_fullcond <- function(y.train = NULL,
       # print("line 2313")
       # print("z_iter_ind = ")
       # print(z_iter_ind)
-
-
     } # end loop over z_iter_ind
-
-
 
     ####### update Z lag matrix ####################
     # print("line 2318")
-
-
     Zlag.mat <- matrix(NA, nrow = n.time_train*num_indiv, ncol = num_lags)
-
     for(t in 1:num_lags){
       init_Z_t0 <- rep(0, t*num_indiv)
       # init_Z_t0 <- rnorm(t*n.item*n.ranker)
-
       Zlag.mat[,t] <- c(init_Z_t0, Z.vec[1:((n.time_train-t)*num_indiv)])
-
     }
-
 
     ######## check that new z values are consistent with the tree structures ###############
 
@@ -2354,9 +2352,7 @@ ARPbart_NOCovars_fullcond <- function(y.train = NULL,
 
     for(j in 1:num_lags){
       # sampler$setPredictor(x = Zlag.mat[,j], column = j, forceUpdate = TRUE)
-
       while (sampler$setPredictor(x = Zlag.mat[,j], column = j) == FALSE) {
-
         if(seq_z_draws==1){
           stop("updates still not consistent with tree structure")
         }
@@ -2458,13 +2454,16 @@ ARPbart_NOCovars_fullcond <- function(y.train = NULL,
     #perhaps makes more sense to use initial values of Z
 
     # sampler$setResponse(y = as.vector(Z.mat))
-    sampler$setResponse(y = as.vector(Z.vec))
-
-    min_resp <- min(Z.vec)
-    max_resp <- max(Z.vec)
-
-    scalezero <- (0 - min_resp)/(max_resp - min_resp) - 0.5
-    scaled_offsetz_vec <- (offsetz_vec - min_resp)/(max_resp - min_resp) - 0.5
+    # sampler$setResponse(y = as.vector(Z.vec))
+    #
+    # min_resp <- min(Z.vec)
+    # max_resp <- max(Z.vec)
+    #
+    # scalezero <- (0 - min_resp)/(max_resp - min_resp) - 0.5
+    # scaled_offsetz_vec <- (offsetz_vec - min_resp)/(max_resp - min_resp) - 0.5
+    computational_offset <- Z_reference - Z.vec
+    dbarts_offset <- computational_offset + genuine_offset_vec
+    sampler$setOffset(offset = dbarts_offset,updateScale = FALSE)
 
     # sampler$setSigma(sigma = 1)
     #sampler$setPredictor(x= df_for_dbart$x, column = 1, forceUpdate = TRUE)
@@ -2472,7 +2471,9 @@ ARPbart_NOCovars_fullcond <- function(y.train = NULL,
     #mu = as.vector( alpha + X.mat %*% beta )
     samplestemp <- sampler$run()
 
-    mutemp <- samplestemp$train[,1]
+    # mutemp <- samplestemp$train[,1]
+    f_train <- as.numeric(samplestemp$train[, 1L]) - dbarts_offset
+    mutemp <- genuine_offset_vec + f_train
     #suppose there are a number of samples
 
     # mutemp <- sampler$predict(df_for_dbart)

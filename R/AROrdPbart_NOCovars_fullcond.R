@@ -174,9 +174,15 @@ AROrdPbart_NOCovars_fullcond <- function(y.train = NULL,
 
   # probably cannot have offsets for ordinal probit
 
-  offsetz <- 0 #qnorm(prop_ones)
+  # offsetz <- 0 #qnorm(prop_ones)
+  #
+  # offsetz_vec <- rep(offsetz, num_indiv)
+  # num_ones_vec <- as.vector(sum(y.train))
+  # prop_ones_vec <- as.vector(mean(y.train))
 
-  offsetz_vec <- rep(offsetz, num_indiv)
+  offsetz <- 0 #qnorm(prop_ones)
+  offsetz_vec <- rep(offsetz, num_indiv*n.time_train)
+  offsetz_vec_test <- rep(offsetz, num_indiv*num_test_periods)
   num_ones_vec <- as.vector(sum(y.train))
   prop_ones_vec <- as.vector(mean(y.train))
 
@@ -351,6 +357,33 @@ AROrdPbart_NOCovars_fullcond <- function(y.train = NULL,
   Z.vec.test <- as.vector(t(Z.mat.test))
 
 
+  Z_initial <-  Z.vec
+  # Z_reference <- ifelse(t(y.train)==maxy, reference_half_range,
+  #                       ifelse(t(y.train)==miny, -reference_half_range,
+  #                              -reference_half_range + (t(y.train)- miny)*(2*reference_half_range)/(maxy-miny)
+  #                              ) )
+  # Z_initial # as.numeric(Z.vec)
+  Z_reference <- ifelse(y.vec==maxy, reference_half_range,
+                        ifelse(y.vec==miny, -reference_half_range,
+                               -reference_half_range + (y.vec- miny)*(2*reference_half_range)/(maxy-miny) ) )
+
+
+  scale_min_fixed <- min(Z_reference)
+  scale_max_fixed <- max(Z_reference)
+  scale_range_fixed <- scale_max_fixed - scale_min_fixed
+  # offset_current <- numeric(
+  #   length(Z_reference)
+  # )
+
+  computational_offset <- Z_reference - Z_initial
+  dbarts_offset <- computational_offset + offsetz_vec
+
+  min_resp <- scale_min_fixed # min(sampler$data@y)
+  max_resp <- scale_max_fixed # max(sampler$data@y)
+  response_range <- scale_range_fixed # max_resp - min_resp
+
+  k_sig_mu <- reference_half_range*probit_k/3.0
+
   ## initial values
   # alpha = rep(0, n.item)
   # beta = rep(0, p.cov)
@@ -420,7 +453,8 @@ AROrdPbart_NOCovars_fullcond <- function(y.train = NULL,
   # }
 
 
-  df_for_dbart <- data.frame(y = as.vector(Z.vec), x = as.matrix(Zlag.mat) )
+  df_for_dbart <- data.frame(y = as.vector(Z_reference), # as.vector(Z.vec),
+                             x = as.matrix(Zlag.mat) )
 
   control <- dbartsControl(updateState = updateState, verbose = FALSE,  keepTrainingFits = TRUE,
                            keepTrees = TRUE,
@@ -456,7 +490,7 @@ AROrdPbart_NOCovars_fullcond <- function(y.train = NULL,
                     data = df_for_dbart,
                     #test = Xmat.test,
                     control = control,
-                    resid.prior = fixed(1),
+                    resid.prior = fixed(1), node.prior = normal(k_sig_mu),
                     sigma=1 #check if this is the correct approach for setting the variance to 1
   )
 
@@ -474,43 +508,50 @@ AROrdPbart_NOCovars_fullcond <- function(y.train = NULL,
   # print(sampler$state[[1]]@trees)
 
   # print("Line 321")
+  computational_offset <- Z_reference - Z_initial
+  dbarts_offset <- computational_offset + offsetz_vec # genuine_offset_vec
+  sampler$setOffset(offset = dbarts_offset, updateScale = FALSE)
+
   #set the response.
   #Check that 0 is a reasonable initial value
   #perhaps makes more sense to use initial values of Z
-  sampler$setResponse(y = as.vector(Z.vec))
+  # sampler$setResponse(y = as.vector(Z.vec))
   # sampler$setSigma(sigma = 1)
 
 
   # print("Line 469")
 
 
-  min_resp <- min(Z.vec)
-  max_resp <- max(Z.vec)
+  # min_resp <- min(Z.vec)
+  # max_resp <- max(Z.vec)
 
 
   # scale offsets
   # scale zero
 
-  scalezero <- (0 - min_resp)/(max_resp - min_resp) - 0.5
-  scaled_offsetz_vec <- (offsetz_vec - min_resp)/(max_resp - min_resp) - 0.5
+  # scalezero <- (0 - min_resp)/(max_resp - min_resp) - 0.5
+  # scaled_offsetz_vec <- (offsetz_vec - min_resp)/(max_resp - min_resp) - 0.5
 
 
 
   #sampler$setPredictor(x= Xmat.train, column = 1, forceUpdate = TRUE)
 
   #mu = as.vector( alpha + X.mat %*% beta )
-  sampler$sampleTreesFromPrior()
+  # sampler$sampleTreesFromPrior()
   samplestemp <- sampler$run()
-
-  mutemp <- samplestemp$train[,1]
-  #suppose there are a number of samples
-
-  # print("sigma = ")
-  # print(samplestemp$sigma)
-
-  # mupreds <- sampler$predict(Xmat.train)
-
+  f_train <- as.numeric(samplestemp$train[, 1L]) - dbarts_offset
+  mutemp <- offsetz_vec + f_train # genuine_offset_vec + f_train
   mu <- mutemp
+
+  # mutemp <- samplestemp$train[,1]
+  # #suppose there are a number of samples
+  #
+  # # print("sigma = ")
+  # # print(samplestemp$sigma)
+  #
+  # # mupreds <- sampler$predict(Xmat.train)
+  #
+  # mu <- mutemp
 
 
   # print("line 493")
@@ -2032,6 +2073,10 @@ AROrdPbart_NOCovars_fullcond <- function(y.train = NULL,
 
     ##################### Sample sum-of-trees ##################################################
 
+    computational_offset <- Z_reference - Z.vec
+    dbarts_offset <- computational_offset + offsetz_vec # genuine_offset_vec
+    sampler$setOffset( offset = dbarts_offset, updateScale = FALSE )
+
 
     #set the response.
     #Check that 0 is a reasonable initial value
@@ -2040,11 +2085,11 @@ AROrdPbart_NOCovars_fullcond <- function(y.train = NULL,
     # sampler$setResponse(y = as.vector(Z.mat))
     sampler$setResponse(y = as.vector(Z.vec))
 
-    min_resp <- min(Z.vec)
-    max_resp <- max(Z.vec)
-
-    scalezero <- (0 - min_resp)/(max_resp - min_resp) - 0.5
-    scaled_offsetz_vec <- (offsetz_vec - min_resp)/(max_resp - min_resp) - 0.5
+    # min_resp <- min(Z.vec)
+    # max_resp <- max(Z.vec)
+    #
+    # scalezero <- (0 - min_resp)/(max_resp - min_resp) - 0.5
+    # scaled_offsetz_vec <- (offsetz_vec - min_resp)/(max_resp - min_resp) - 0.5
 
     # sampler$setSigma(sigma = 1)
     #sampler$setPredictor(x= df_for_dbart$x, column = 1, forceUpdate = TRUE)
@@ -2052,14 +2097,18 @@ AROrdPbart_NOCovars_fullcond <- function(y.train = NULL,
     #mu = as.vector( alpha + X.mat %*% beta )
     samplestemp <- sampler$run()
 
-    mutemp <- samplestemp$train[,1]
-    #suppose there are a number of samples
-
-    # mutemp <- sampler$predict(df_for_dbart)
-    # print("sigma = ")
-    # print(samplestemp$sigma)
-
+    f_train <- as.numeric(samplestemp$train[, 1L]) - dbarts_offset
+    mutemp <- offsetz_vec + f_train # genuine_offset_vec + f_train
     mu = mutemp
+
+    # mutemp <- samplestemp$train[,1]
+    # #suppose there are a number of samples
+    #
+    # # mutemp <- sampler$predict(df_for_dbart)
+    # # print("sigma = ")
+    # # print(samplestemp$sigma)
+    #
+    # mu = mutemp
 
     # print("line 2307 = ")
     #

@@ -20,7 +20,6 @@ ARPbart_NOCovars_fullcond(
   n.thin = 1L,
   n.chains = 1L,
   n.threads = 1L,
-  printEvery = 100L,
   printCutoffs = 0L,
   rngKind = "default",
   rngNormalKind = "default",
@@ -55,8 +54,6 @@ ARPbart_NOCovars_fullcond(
 
 \item{n.threads}{(dbarts option) A positive integer controlling how many threads will be used for various internal calculations, as well as the number of chains. Internal calculations are highly optimized so that single-threaded performance tends to be superior unless the number of observations is very large (>10k), so that it is often not necessary to have the number of threads exceed the number of chains.}
 
-\item{printEvery}{(dbarts option)If verbose is TRUE, every printEvery potential samples (after thinning) will issue a verbal statement. Must be a positive integer.}
-
 \item{printCutoffs}{(dbarts option) A non-negative integer specifying how many of the decision rules for a variable are printed in verbose mode}
 
 \item{rngKind}{(dbarts option) Random number generator kind, as used in set.seed. For type "default", the built-in generator will be used if possible. Otherwise, will attempt to match the built-in generator’s type. Success depends on the number of threads.}
@@ -68,6 +65,8 @@ ARPbart_NOCovars_fullcond(
 \item{updateState}{(dbarts option) Logical setting the default behavior for many sampler methods with regards to the immediate updating of the cached state of the object. A current, cached state is only useful when saving/loading the sampler.}
 
 \item{print.opt}{Print every print.optnumber of Gibbsa samples.}
+
+\item{printEvery}{(dbarts option)If verbose is TRUE, every printEvery potential samples (after thinning) will issue a verbal statement. Must be a positive integer.}
 }
 \value{
 A list is returned containing the following elements:
