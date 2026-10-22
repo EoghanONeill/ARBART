@@ -108,6 +108,42 @@ BEGIN_RCPP
     return rcpp_result_gen;
 END_RCPP
 }
+// getlistinter_create_intermat
+arma::mat getlistinter_create_intermat(const arma::field<arma::mat>& rebuilt_tree_list, const arma::mat& x_mat);
+RcppExport SEXP _ARBART_getlistinter_create_intermat(SEXP rebuilt_tree_listSEXP, SEXP x_matSEXP) {
+BEGIN_RCPP
+    Rcpp::RObject rcpp_result_gen;
+    Rcpp::RNGScope rcpp_rngScope_gen;
+    Rcpp::traits::input_parameter< const arma::field<arma::mat>& >::type rebuilt_tree_list(rebuilt_tree_listSEXP);
+    Rcpp::traits::input_parameter< const arma::mat& >::type x_mat(x_matSEXP);
+    rcpp_result_gen = Rcpp::wrap(getlistinter_create_intermat(rebuilt_tree_list, x_mat));
+    return rcpp_result_gen;
+END_RCPP
+}
+// rebuildTreeFromChildren_cpp
+arma::mat rebuildTreeFromChildren_cpp(const arma::mat& tree, int terminal_col, int node_size_col, int split_variable_col, int split_value_col, int mu_col, int child_left_col, int child_right_col, int root_row, int lag_variable_index, bool child_indices_one_based, double sample_number, double tree_number, bool require_all_rows_reachable);
+RcppExport SEXP _ARBART_rebuildTreeFromChildren_cpp(SEXP treeSEXP, SEXP terminal_colSEXP, SEXP node_size_colSEXP, SEXP split_variable_colSEXP, SEXP split_value_colSEXP, SEXP mu_colSEXP, SEXP child_left_colSEXP, SEXP child_right_colSEXP, SEXP root_rowSEXP, SEXP lag_variable_indexSEXP, SEXP child_indices_one_basedSEXP, SEXP sample_numberSEXP, SEXP tree_numberSEXP, SEXP require_all_rows_reachableSEXP) {
+BEGIN_RCPP
+    Rcpp::RObject rcpp_result_gen;
+    Rcpp::RNGScope rcpp_rngScope_gen;
+    Rcpp::traits::input_parameter< const arma::mat& >::type tree(treeSEXP);
+    Rcpp::traits::input_parameter< int >::type terminal_col(terminal_colSEXP);
+    Rcpp::traits::input_parameter< int >::type node_size_col(node_size_colSEXP);
+    Rcpp::traits::input_parameter< int >::type split_variable_col(split_variable_colSEXP);
+    Rcpp::traits::input_parameter< int >::type split_value_col(split_value_colSEXP);
+    Rcpp::traits::input_parameter< int >::type mu_col(mu_colSEXP);
+    Rcpp::traits::input_parameter< int >::type child_left_col(child_left_colSEXP);
+    Rcpp::traits::input_parameter< int >::type child_right_col(child_right_colSEXP);
+    Rcpp::traits::input_parameter< int >::type root_row(root_rowSEXP);
+    Rcpp::traits::input_parameter< int >::type lag_variable_index(lag_variable_indexSEXP);
+    Rcpp::traits::input_parameter< bool >::type child_indices_one_based(child_indices_one_basedSEXP);
+    Rcpp::traits::input_parameter< double >::type sample_number(sample_numberSEXP);
+    Rcpp::traits::input_parameter< double >::type tree_number(tree_numberSEXP);
+    Rcpp::traits::input_parameter< bool >::type require_all_rows_reachable(require_all_rows_reachableSEXP);
+    rcpp_result_gen = Rcpp::wrap(rebuildTreeFromChildren_cpp(tree, terminal_col, node_size_col, split_variable_col, split_value_col, mu_col, child_left_col, child_right_col, root_row, lag_variable_index, child_indices_one_based, sample_number, tree_number, require_all_rows_reachable));
+    return rcpp_result_gen;
+END_RCPP
+}
 
 static const R_CallMethodDef CallEntries[] = {
     {"_ARBART_getPredictionsRangesForTreeMCP_cpp", (DL_FUNC) &_ARBART_getPredictionsRangesForTreeMCP_cpp, 2},
@@ -118,6 +154,8 @@ static const R_CallMethodDef CallEntries[] = {
     {"_ARBART_getListintermats_cpp", (DL_FUNC) &_ARBART_getListintermats_cpp, 2},
     {"_ARBART_unique_with_specials", (DL_FUNC) &_ARBART_unique_with_specials, 1},
     {"_ARBART_interNtreesB_cpp", (DL_FUNC) &_ARBART_interNtreesB_cpp, 1},
+    {"_ARBART_getlistinter_create_intermat", (DL_FUNC) &_ARBART_getlistinter_create_intermat, 2},
+    {"_ARBART_rebuildTreeFromChildren_cpp", (DL_FUNC) &_ARBART_rebuildTreeFromChildren_cpp, 14},
     {NULL, NULL, 0}
 };
 

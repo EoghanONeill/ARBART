@@ -33,3 +33,11 @@ interNtreesB_cpp <- function(inter_list) {
     .Call(`_ARBART_interNtreesB_cpp`, inter_list)
 }
 
+getlistinter_create_intermat <- function(rebuilt_tree_list, x_mat) {
+    .Call(`_ARBART_getlistinter_create_intermat`, rebuilt_tree_list, x_mat)
+}
+
+rebuildTreeFromChildren_cpp <- function(tree, terminal_col, node_size_col, split_variable_col, split_value_col, mu_col, child_left_col, child_right_col, root_row = 1L, lag_variable_index = 1L, child_indices_one_based = TRUE, sample_number = 1.0, tree_number = 1.0, require_all_rows_reachable = TRUE) {
+    .Call(`_ARBART_rebuildTreeFromChildren_cpp`, tree, terminal_col, node_size_col, split_variable_col, split_value_col, mu_col, child_left_col, child_right_col, root_row, lag_variable_index, child_indices_one_based, sample_number, tree_number, require_all_rows_reachable)
+}
+

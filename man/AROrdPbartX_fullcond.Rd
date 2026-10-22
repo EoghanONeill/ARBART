@@ -27,7 +27,9 @@ AROrdPbartX_fullcond(
   print.opt = printEvery,
   seq_z_draws = 1,
   probit_k = 2,
-  reference_half_range = 3
+  reference_half_range = 3,
+  max_lag_update_attempts = 10000L,
+  reject_or_restrict_Z_props = "restrict"
 )
 }
 \arguments{
