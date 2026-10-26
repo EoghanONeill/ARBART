@@ -457,21 +457,21 @@ ARPbartX_fullcond_emptynodes <- function(y.train = NULL,
   }
   # }
   # and redefine z mat test lags?
-  if(n.burnin == 0){
-    draw$mu_test[,,1] <- matrix(temp_mu_test, nrow = num_indiv, ncol = num_test_periods) #temp_mu_test
-    draw$prob.test.draws[,,1] <- pnorm(draw$mu_test[,,1])
-    # draw$mu_test[,1] <- samplestemp$test[,1]
-    if(keep_zmat==TRUE){
-      draw$Z.mat.test[,,1]  <- t(matrix(data = as.vector(temp_test_preds), nrow = num_indiv, ncol = num_test_periods))
-    }
-  }
+  # if(n.burnin == 0){
+  #   draw$mu_test[,,1] <- matrix(temp_mu_test, nrow = num_indiv, ncol = num_test_periods) #temp_mu_test
+  #   draw$prob.test.draws[,,1] <- pnorm(draw$mu_test[,,1])
+  #   # draw$mu_test[,1] <- samplestemp$test[,1]
+  #   if(keep_zmat==TRUE){
+  #     draw$Z.mat.test[,,1]  <- t(matrix(data = as.vector(temp_test_preds), nrow = num_indiv, ncol = num_test_periods))
+  #   }
+  # }
   # print("Line 828")
 
   # max_lag_update_attempts  <- 1000L
   ##################### Begin Gibbs sampler ##################################################
   #//////////////////////////////////////////////////////////////////////////
   ## Gibbs iteration
-  iter <- 2
+  iter <- 1
   # breakcount <- 0
   # for(iter in 2:(n.burnin + n.iter)){
   while( iter <= (n.burnin + n.iter) ){
@@ -577,42 +577,47 @@ ARPbartX_fullcond_emptynodes <- function(y.train = NULL,
         intersectmat_tmin1 <- cbind(intersectmat_tmin1, rep(NA, nrow(intersectmat_tmin1)))
 
         # calculate one dimensional integrals
-        for(rowind in 1:nrow(intersectmat_tmin1)){
-          # ktemp <- nkt_mat[rowind,k_index]
-          # tempmean <- intersectmat_tmin1[ktemp,1]
-          templower <- intersectmat_tmin1[rowind,2]
-          tempupper <- intersectmat_tmin1[rowind,3]
-          # ASSUMING PRIOR MEAN ALL ZEROS
-          intersectmat_tmin1[rowind, 4] <- pnorm(tempupper, mean = 0, sd = 1) - pnorm(templower, mean = 0, sd = 1)
-          # tempintegralval <- tempintegralval*onedim_int
-        }
+        # for(rowind in 1:nrow(intersectmat_tmin1)){
+        #   # ktemp <- nkt_mat[rowind,k_index]
+        #   # tempmean <- intersectmat_tmin1[ktemp,1]
+        #   templower <- intersectmat_tmin1[rowind,2]
+        #   tempupper <- intersectmat_tmin1[rowind,3]
+        #   # ASSUMING PRIOR MEAN ALL ZEROS
+        #   intersectmat_tmin1[rowind, 4] <- pnorm(tempupper, mean = 0, sd = 1) - pnorm(templower, mean = 0, sd = 1)
+        #   # tempintegralval <- tempintegralval*onedim_int
+        # }
+        # intersectmat_tmin1[, 4] <- pnorm(intersectmat_tmin1[,3], mean = 0, sd = 1) - pnorm( intersectmat_tmin1[,2], mean = 0, sd = 1)
+        # log_q1 <- stable_log_diff_cdf_vec(intersectmat_tmin1[, 2L], intersectmat_tmin1[, 3L])
+        log_q1 <- stable_log_diff_cdf_vec(intersectmat_tmin1[, 2L], intersectmat_tmin1[, 3L])
+        q1 <- normalize_log_probs(logp = log_q1,iter = iter,indiv = indiv,z_iter = z_iter_ind,t = 1L,context = "FFBS initial-region probabilities")
+        intersectmat_tmin1[, 4]  <- q1 # exp(log_q1 - max(log_q1))
         Biglist_intersectmats[[1]] <- intersectmat_tmin1
 
-        ################ period 2 intersection matrix #################################################
-
-        indiv_ind <- (2 - 1)*num_indiv+indiv
-        # list_inter_mats <- getListintermats_cpp(rebuilt_tree_list , as.matrix(Xmat.train[indiv_ind,-1, drop = FALSE]))
-        # intersectmat <- interNtreesB_cpp(list_inter_mats)
-
-        intersectmat <- getlistinter_create_intermat(rebuilt_tree_list , as.matrix(Xmat.train[indiv_ind,-1, drop = FALSE]))
-
-        intersectmat <- cbind(intersectmat, rep(NA, nrow(intersectmat)))
-
-        # calculate one dimensional integrals
-        for(rowind in 1:nrow(intersectmat)){
-          # ktemp <- nkt_mat[rowind,k_index]
-          # tempmean <- intersectmat[ktemp,1]
-          templower <- intersectmat[rowind,2]
-          tempupper <- intersectmat[rowind,3]
-          # ASSUMING PRIOR MEAN ALL ZEROS
-          intersectmat[rowind, 4] <- pnorm(tempupper, mean = 0, sd = 1) - pnorm(templower, mean = 0, sd = 1)
-          # tempintegralval <- tempintegralval*onedim_int
-        }
-        Biglist_intersectmats[[2]] <- intersectmat
+        # ################ period 2 intersection matrix #################################################
+        #
+        # indiv_ind <- (2 - 1)*num_indiv+indiv
+        # # list_inter_mats <- getListintermats_cpp(rebuilt_tree_list , as.matrix(Xmat.train[indiv_ind,-1, drop = FALSE]))
+        # # intersectmat <- interNtreesB_cpp(list_inter_mats)
+        #
+        # intersectmat <- getlistinter_create_intermat(rebuilt_tree_list , as.matrix(Xmat.train[indiv_ind,-1, drop = FALSE]))
+        #
+        # intersectmat <- cbind(intersectmat, rep(NA, nrow(intersectmat)))
+        #
+        # # calculate one dimensional integrals
+        # for(rowind in 1:nrow(intersectmat)){
+        #   # ktemp <- nkt_mat[rowind,k_index]
+        #   # tempmean <- intersectmat[ktemp,1]
+        #   templower <- intersectmat[rowind,2]
+        #   tempupper <- intersectmat[rowind,3]
+        #   # ASSUMING PRIOR MEAN ALL ZEROS
+        #   intersectmat[rowind, 4] <- pnorm(tempupper, mean = 0, sd = 1) - pnorm(templower, mean = 0, sd = 1)
+        #   # tempintegralval <- tempintegralval*onedim_int
+        # }
+        # Biglist_intersectmats[[2]] <- intersectmat
         ##### t = 3 to T intersect matrices ######################
 
         # print("Begin loop for intersection matrices = ")
-        for(t in 3:n.time_train){
+        for(t in 2:n.time_train){
           #### obtain intersection matrices for time period t ###############
           # print("t = ")
           # print(t)
@@ -693,13 +698,13 @@ ARPbartX_fullcond_emptynodes <- function(y.train = NULL,
         temp_tnorm_logprobvec[good_regions] <- fastlognormdens(temp_ztp1,
                                                                mean = tempmeanfordens[good_regions],
                                                                sd = 1)
-        q0 <- intersectmat_tmin1[, 4]
+        # q0 <- intersectmat_tmin1[, 4]
         dens_log <- temp_tnorm_logprobvec[good_regions]
 
-        if (anyNA(q0) || any(q0 < 0) || any(!is.finite(q0) & q0 != 0)) {
-          stop(sprintf(paste0("Invalid q0 interval mass at iter=%d: ","q0=%s; lower=%s; upper=%s"),
-                       iter,paste(q0, collapse = ", "),paste(intersectmat_tmin1[, 2], collapse = ", "),paste(intersectmat_tmin1[, 3], collapse = ", ")))
-        }
+        # if (anyNA(q0) || any(q0 < 0) || any(!is.finite(q0) & q0 != 0)) {
+        #   stop(sprintf(paste0("Invalid q0 interval mass at iter=%d: ","q0=%s; lower=%s; upper=%s"),
+        #                iter,paste(q0, collapse = ", "),paste(intersectmat_tmin1[, 2], collapse = ", "),paste(intersectmat_tmin1[, 3], collapse = ", ")))
+        # }
 
         if (anyNA(dens_log) || any(dens_log == Inf)) {
           stop(sprintf(paste0("Invalid transition log-density at iter=%d: ","z_tp1=%g; means=%s; logdens=%s"),

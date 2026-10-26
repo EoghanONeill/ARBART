@@ -32,11 +32,13 @@ theta <- cbind(
 )
 y2 <- rbinom(nt,prob=1-pnorm(rowSums(cbind(1,xtemp)*theta)),size=1)
 
-arpbart <- ARProbitbartNOCovars_fullcond(y.train = y2,
-                              seq_z_draws = 0,
-                              print.opt = 1,
-                              n.burnin = 0,
-                              n.iter  = 100L)
+arpbart <- ARPbartX_FFBS_emptynodes(y.train = as.matrix(y2),
+                                        X.train = xtemp,
+                                        X.test = xtemp[c(ncol(xtemp),ncol(xtemp)) ,],
+                                        print.opt = 100L, num_z_iters = 1L,
+                                        n.burnin = 500L,
+                                        n.iter  = 2000L, validate_rebuilt_trees = FALSE,
+                                        num_test_periods = 2)
 
 ```
 

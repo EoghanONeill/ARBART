@@ -122,10 +122,10 @@ AROrdPbartX_fullcond <- function(y.train = NULL,
     print(ncol(y.train))
     stop("nrow(X.train) != ncol(y.train)*nrow(y.train)")
   }
-  if (is.null(X.test)){
-    print("X.test is NULL, creating matrix of zeros ")
-    X.test <- matrix(numeric(0), nrow = ncol(y.train) * num_test_periods, ncol = 0L)
-  }
+  # if (is.null(X.test)){
+  #   print("X.test is NULL, creating matrix of zeros ")
+  #   X.test <- matrix(numeric(0), nrow = ncol(y.train) * num_test_periods, ncol = 0L)
+  # }
   if(nrow(X.test) != ncol(y.train)*num_test_periods){
     print("nrow(X.test) = ")
     print(nrow(X.test))
@@ -461,22 +461,22 @@ AROrdPbartX_fullcond <- function(y.train = NULL,
   mutemp <- offsetz_vec + f_train # genuine_offset_vec + f_train
   mu <- mutemp
 
-  if(n.burnin == 0){
-    if(keep_zmat==TRUE){
-      draw$Z.mat[,,1] <- Z.mat
-      draw$Z.mat.test[,,1] <- Z.mat.test
-    }
-    # draw$alpha[,1] = alpha
-    # draw$beta[,1] = beta
-    draw$mu[, , 1] <- matrix(mu ,
-                             nrow = num_indiv, ncol = n.time_train)
-    draw$prob.train.draws[, , 1:num_categories, 1] <-
-      pnorm( outer( X = - draw$mu[, , 1]  ,  Y =  c(thresholds, Inf ), FUN = "+")  ) -
-      pnorm( outer( X = - draw$mu[, , 1]   ,  Y =  c(-Inf,thresholds ), FUN = "+")  )
-    # draw$sigma2.alpha[1] = sigma2.alpha
-    # draw$sigma2.beta[1] = sigma2.beta
-    draw$thresholds[,1] <- thresholds
-  }
+  # if(n.burnin == 0){
+  #   if(keep_zmat==TRUE){
+  #     draw$Z.mat[,,1] <- Z.mat
+  #     draw$Z.mat.test[,,1] <- Z.mat.test
+  #   }
+  #   # draw$alpha[,1] = alpha
+  #   # draw$beta[,1] = beta
+  #   draw$mu[, , 1] <- matrix(mu ,
+  #                            nrow = num_indiv, ncol = n.time_train)
+  #   draw$prob.train.draws[, , 1:num_categories, 1] <-
+  #     pnorm( outer( X = - draw$mu[, , 1]  ,  Y =  c(thresholds, Inf ), FUN = "+")  ) -
+  #     pnorm( outer( X = - draw$mu[, , 1]   ,  Y =  c(-Inf,thresholds ), FUN = "+")  )
+  #   # draw$sigma2.alpha[1] = sigma2.alpha
+  #   # draw$sigma2.beta[1] = sigma2.beta
+  #   draw$thresholds[,1] <- thresholds
+  # }
 
   # print("Line 954")
 
@@ -593,7 +593,7 @@ AROrdPbartX_fullcond <- function(y.train = NULL,
     #
     # }
     test_indices <- (t1 -1L)*num_indiv + seq_len(num_indiv)
-    offset_current_test <-offsetz_vec_test[test_indices ]
+    offset_current_test <- offsetz_vec_test[test_indices ]
     if(noise_in_pred==1){
       temp_test_preds[ , t1] <- testpredvec + offset_current_test + rnorm( num_indiv )
     }else{
@@ -662,22 +662,22 @@ AROrdPbartX_fullcond <- function(y.train = NULL,
   }
   # }
   # and redefine z mat test lags?
-  if(n.burnin == 0){
-    draw$mu_test[,,1] <- matrix(temp_mu_test , nrow = num_indiv, ncol = num_test_periods) #temp_mu_test
-    draw$prob.test.draws[, , 1:num_categories, 1] <-
-      pnorm( outer( X = - draw$mu_test[, , 1]  ,  Y =  c(thresholds, Inf ), FUN = "+")  ) -
-      pnorm( outer( X = - draw$mu_test[, , 1]  ,  Y =  c(-Inf,thresholds ), FUN = "+")  )
-    # draw$mu_test[,1] <- samplestemp$test[,1]
-    if(keep_zmat==TRUE){
-      draw$Z.mat.test[,,1]  <- t(matrix(data = as.vector(temp_test_preds), nrow = num_indiv, ncol = num_test_periods))
-    }
-  }
+  # if(n.burnin == 0){
+  #   draw$mu_test[,,1] <- matrix(temp_mu_test , nrow = num_indiv, ncol = num_test_periods) #temp_mu_test
+  #   draw$prob.test.draws[, , 1:num_categories, 1] <-
+  #     pnorm( outer( X = - draw$mu_test[, , 1]  ,  Y =  c(thresholds, Inf ), FUN = "+")  ) -
+  #     pnorm( outer( X = - draw$mu_test[, , 1]  ,  Y =  c(-Inf,thresholds ), FUN = "+")  )
+  #   # draw$mu_test[,1] <- samplestemp$test[,1]
+  #   if(keep_zmat==TRUE){
+  #     draw$Z.mat.test[,,1]  <- t(matrix(data = as.vector(temp_test_preds), nrow = num_indiv, ncol = num_test_periods))
+  #   }
+  # }
   # print("Line 828")
   # max_lag_update_attempts <- 1000L
   ##################### Begin Gibbs sampler ##################################################
   #//////////////////////////////////////////////////////////////////////////
   ## Gibbs iteration
-  iter <- 2
+  iter <- 1
   breakcount <- 0
 
   # for(iter in 2:(n.burnin + n.iter)){
@@ -791,52 +791,56 @@ AROrdPbartX_fullcond <- function(y.train = NULL,
         # intersectmat_tmin1 <- getlistinter_create_intermat(rebuilt_tree_list , as.matrix(Xmat.train[indiv_ind,-1, drop = FALSE]))
         intersectmat_tmin1 <- cbind(intersectmat_tmin1, rep(NA, nrow(intersectmat_tmin1)))
         # calculate one dimensional integrals
-        for(rowind in 1:nrow(intersectmat_tmin1)){
-          # ktemp <- nkt_mat[rowind,k_index]
-          # tempmean <- intersectmat_tmin1[ktemp,1]
-          templower <- intersectmat_tmin1[rowind,2]
-          tempupper <- intersectmat_tmin1[rowind,3]
-          # ASSUMING PRIOR MEAN ALL ZEROS
-          intersectmat_tmin1[rowind, 4] <- pnorm(tempupper, mean = 0, sd = 1) - pnorm(templower, mean = 0, sd = 1)
-          # tempintegralval <- tempintegralval*onedim_int
-        }
-
-        Biglist_intersectmats[[1]] <- intersectmat_tmin1
-        ################ period 2 intersection matrix #################################################
-        # create vector of indices for ranker indiv in time period 2
-        indiv_ind <- (2 - 1)*num_indiv+indiv
-        # list_inter_mats <- list()
-        # for(i in 1:n.trees){
-        #   treeexample1 <- sampler$getTrees(treeNums = i, chainNums = 1, sampleNums = 1)
-        #   # rebuilt_tree <- rebuildTree2(treeexample1)
-        #   rebuilt_tree <- rebuildTree2_cpp(as.matrix(treeexample1))
-        #   #must use covariates for individual indiv at time period t
-        #   # list_inter_mats[[i]] <- getPredictionsRangesForTree3(rebuilt_tree, Xmat.train[obs_indices[1],-1, drop = FALSE] )
-        #   # list_inter_mats[[i]] <- getPredictionsRangesForTree3_cpp(as.matrix(rebuilt_tree),
-        #   #                                                          as.matrix(Xmat.train[indiv_ind,-1, drop = FALSE]) )
-        #   list_inter_mats[[i]] <- getPredictionsRangesForTreeMCP_cpp(as.matrix(rebuilt_tree),
-        #                                                            as.matrix(Xmat.train[indiv_ind,-1, drop = FALSE]) )
+        # for(rowind in 1:nrow(intersectmat_tmin1)){
+        #   # ktemp <- nkt_mat[rowind,k_index]
+        #   # tempmean <- intersectmat_tmin1[ktemp,1]
+        #   templower <- intersectmat_tmin1[rowind,2]
+        #   tempupper <- intersectmat_tmin1[rowind,3]
+        #   # ASSUMING PRIOR MEAN ALL ZEROS
+        #   intersectmat_tmin1[rowind, 4] <- pnorm(tempupper, mean = 0, sd = 1) - pnorm(templower, mean = 0, sd = 1)
+        #   # tempintegralval <- tempintegralval*onedim_int
         # }
 
-        list_inter_mats <- getListintermats_cpp(rebuilt_tree_list , as.matrix(Xmat.train[indiv_ind,-1, drop = FALSE]))
-        intersectmat <- interNtreesB_cpp(list_inter_mats)
-        # intersectmat <- getlistinter_create_intermat(rebuilt_tree_list , as.matrix(Xmat.train[indiv_ind,-1, drop = FALSE]))
-        intersectmat <- cbind(intersectmat, rep(NA, nrow(intersectmat)))
-        # calculate one dimensional integrals
-        for(rowind in 1:nrow(intersectmat)){
-          # ktemp <- nkt_mat[rowind,k_index]
-          # tempmean <- intersectmat[ktemp,1]
-          templower <- intersectmat[rowind,2]
-          tempupper <- intersectmat[rowind,3]
-          # ASSUMING PRIOR MEAN ALL ZEROS
-          intersectmat[rowind, 4] <- pnorm(tempupper, mean = 0, sd = 1) - pnorm(templower, mean = 0, sd = 1)
-          # tempintegralval <- tempintegralval*onedim_int
-        }
-        Biglist_intersectmats[[2]] <- intersectmat
+        # intersectmat_tmin1[, 4] <- pnorm(intersectmat_tmin1[,3], mean = 0, sd = 1) - pnorm( intersectmat_tmin1[,2], mean = 0, sd = 1)
+        log_q1 <- stable_log_diff_cdf_vec(intersectmat_tmin1[, 2L], intersectmat_tmin1[, 3L])
+        q1 <- normalize_log_probs(logp = log_q1,iter = iter,indiv = indiv,z_iter = z_iter_ind,t = 1L,context = "FFBS initial-region probabilities")
+        intersectmat_tmin1[, 4]  <- q1 # exp(log_q1 - max(log_q1))
+        Biglist_intersectmats[[1]] <- intersectmat_tmin1
+        ################ period 2 intersection matrix #################################################
+        # # create vector of indices for ranker indiv in time period 2
+        # indiv_ind <- (2 - 1)*num_indiv+indiv
+        # # list_inter_mats <- list()
+        # # for(i in 1:n.trees){
+        # #   treeexample1 <- sampler$getTrees(treeNums = i, chainNums = 1, sampleNums = 1)
+        # #   # rebuilt_tree <- rebuildTree2(treeexample1)
+        # #   rebuilt_tree <- rebuildTree2_cpp(as.matrix(treeexample1))
+        # #   #must use covariates for individual indiv at time period t
+        # #   # list_inter_mats[[i]] <- getPredictionsRangesForTree3(rebuilt_tree, Xmat.train[obs_indices[1],-1, drop = FALSE] )
+        # #   # list_inter_mats[[i]] <- getPredictionsRangesForTree3_cpp(as.matrix(rebuilt_tree),
+        # #   #                                                          as.matrix(Xmat.train[indiv_ind,-1, drop = FALSE]) )
+        # #   list_inter_mats[[i]] <- getPredictionsRangesForTreeMCP_cpp(as.matrix(rebuilt_tree),
+        # #                                                            as.matrix(Xmat.train[indiv_ind,-1, drop = FALSE]) )
+        # # }
+        #
+        # list_inter_mats <- getListintermats_cpp(rebuilt_tree_list , as.matrix(Xmat.train[indiv_ind,-1, drop = FALSE]))
+        # intersectmat <- interNtreesB_cpp(list_inter_mats)
+        # # intersectmat <- getlistinter_create_intermat(rebuilt_tree_list , as.matrix(Xmat.train[indiv_ind,-1, drop = FALSE]))
+        # intersectmat <- cbind(intersectmat, rep(NA, nrow(intersectmat)))
+        # # calculate one dimensional integrals
+        # for(rowind in 1:nrow(intersectmat)){
+        #   # ktemp <- nkt_mat[rowind,k_index]
+        #   # tempmean <- intersectmat[ktemp,1]
+        #   templower <- intersectmat[rowind,2]
+        #   tempupper <- intersectmat[rowind,3]
+        #   # ASSUMING PRIOR MEAN ALL ZEROS
+        #   intersectmat[rowind, 4] <- pnorm(tempupper, mean = 0, sd = 1) - pnorm(templower, mean = 0, sd = 1)
+        #   # tempintegralval <- tempintegralval*onedim_int
+        # }
+        # Biglist_intersectmats[[2]] <- intersectmat
 
-        ##### t = 3 to T intersect matrices ######################
+        ##### t = 2 to T intersect matrices ######################
         # print("Begin loop for intersection matrices = ")
-        for(t in 3:n.time_train){
+        for(t in 2:n.time_train){
           #### obtain intersection matrices for time period t ###############
           # print("t = ")
           # print(t)
