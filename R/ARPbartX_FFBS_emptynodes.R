@@ -29,51 +29,54 @@
 #' @useDynLib ARBART, .registration = TRUE
 #' @export
 ARPbartX_FFBS_emptynodes <- function(y.train = NULL,
-                                         X.train = matrix(NA, nrow = nrow(y.train)*ncol(y.train), ncol = 0),
-                                         X.test = NULL, # matrix(NA, nrow =0, ncol = 0),
-                                         n.iter=1000L,
-                                         n.burnin=100L,
-                                         num_test_periods = 1L,
-                                         num_lags = 1L, #initial.list = NULL,
-                                         indiv.offsets = FALSE,
-                                         num_z_iters = 10L,
-                                         keep_zmat = FALSE,
-                                         noise_in_pred = 1L,
-                                         n.trees = 50L,
-                                         print.opt = 100L, #printEvery,
-                                         # seq_z_draws = 1,
-                                         probit_k = 2.0,
-                                         reference_half_range = 3.0, # max_lag_update_attempts = 10000L,
-                                         prune_existing_empty_leaves  = FALSE,
-                                         sigma2 = 1,
-                                         alpha = 0.95,
-                                         beta = 2,
-                                         node_min_size = 1L,
-                                         trans_prob = c(0.3, 0.3, 0.4),
-                                         splitting_rules = "continuous",
-                                         max_bad_trees = 50L,
-                                         sparse = FALSE,
-                                         alpha_prior = FALSE,
-                                         alpha_a = 0.5,
-                                         alpha_b = 1,
-                                         sigma_mu_prior = FALSE,
-                                         validate_rebuilt_trees = FALSE){
+                                     X.train = matrix(NA, nrow = nrow(y.train)*ncol(y.train), ncol = 0),
+                                     X.test = NULL, # matrix(NA, nrow =0, ncol = 0),
+                                     n.iter=1000L,
+                                     n.burnin=100L,
+                                     num_test_periods = 1L,
+                                     num_lags = 1L, #initial.list = NULL,
+                                     indiv.offsets = FALSE,
+                                     num_z_iters = 10L,
+                                     keep_zmat = FALSE,
+                                     noise_in_pred = 1L,
+                                     n.trees = 50L,
+                                     print.opt = 100L, #printEvery,
+                                     # seq_z_draws = 1,
+                                     probit_k = 2.0,
+                                     reference_half_range = 3.0, # max_lag_update_attempts = 10000L,
+                                     prune_existing_empty_leaves  = FALSE,
+                                     sigma2 = 1,
+                                     alpha = 0.95,
+                                     beta = 2,
+                                     node_min_size = 1L,
+                                     trans_prob = c(0.3, 0.3, 0.4),
+                                     splitting_rules = "continuous",
+                                     max_bad_trees = 50L,
+                                     sparse = FALSE,
+                                     alpha_prior = FALSE,
+                                     alpha_a = 0.5,
+                                     alpha_b = 1,
+                                     sigma_mu_prior = FALSE,
+                                     validate_rebuilt_trees = FALSE,
+                                     num_obs_lags = 0,
+                                     Yobslagmat =  NULL # matrix(NA, nrow = nrow(y.train)*ncol(y.train), ncol = num_obs_lags)
+                                     ){
 
 
-  if (length(sigma2) != 1L || is.na(sigma2) || !is.finite(sigma2) || sigma2 != 1) {
-    stop("sigma2 must equal 1 for probit identification and FFBS consistency.")
-  }
+  if (length(sigma2) != 1L || is.na(sigma2) || !is.finite(sigma2) || sigma2 != 1) {stop("sigma2 must equal 1 for probit identification and FFBS consistency.")}
+  if (length(num_obs_lags) != 1L || is.na(num_obs_lags) || !is.finite(num_obs_lags) || num_obs_lags != as.integer(num_obs_lags) || num_obs_lags < 0L) {stop("num_obs_lags must be a non-negative integer.")}
+  num_obs_lags <- as.integer(num_obs_lags)
+  if ( num_obs_lags > nrow(y.train)) {stop(paste0("num_obs_lags cannot exceed the number of training periods."))}
 
 
   ######### Check inputs ##################
   if(num_test_periods < 1){stop("num_test_periods must be >=1")}
-  if(!is.integer(num_lags)){stop("num_lags must be an integer.")}
-  if(num_lags <1){stop("num_lags must be an integer greater than or equal to 1.")}
+  if (length(num_lags) != 1L ||is.na(num_lags) ||!is.finite(num_lags) ||num_lags != as.integer(num_lags) ||num_lags < 1L) {stop("num_lags must be a positive integer.")}
+  num_lags <- as.integer(num_lags)
+  if (num_lags > 1L) {stop("Code not yet written for num_lags > 1.")}
   if(num_lags >1){stop("Code not yet written for num_lags > 1.")}
   if (length(num_z_iters) != 1L || is.na(num_z_iters) || num_z_iters != as.integer(num_z_iters) || num_z_iters < 1L){stop("num_z_iters must be an integer greater than or equal to 1. It is the number of repeated samples of latent variable values per Gibbs iteration.")}
   #check that input values are binary 0 or 1.
-  if(!(all(y.train %in% c(0,1)))){stop("Input y.train values must be 0 or 1.")}
-  if(length(unique(y.train))!= 2){stop("y.train must contain at least one 0 and at least one 1. Input y.train containing all zeros or all ones is not supported.")}
   # check input covariates
   X.train <- as.matrix(X.train)
   if (is.null(X.test)){
@@ -81,10 +84,17 @@ ARPbartX_FFBS_emptynodes <- function(y.train = NULL,
     X.test <- matrix(numeric(0), nrow = ncol(y.train) * num_test_periods, ncol = 0L)
   }
   X.test <- as.matrix(X.test)
+  if (is.null(y.train)) {stop("Input y.train is NULL")}
   y.train <- as.matrix(y.train)
+  if(!(all(y.train %in% c(0,1)))){stop("Input y.train values must be 0 or 1.")}
+  if(length(unique(y.train))!= 2){stop("y.train must contain at least one 0 and at least one 1. Input y.train containing all zeros or all ones is not supported.")}
   y.vec <- as.vector(t(y.train))
   if (nrow(y.train) < 3L) stop("ARPbartX_fullcond currently requires at least three training periods.", call. = FALSE)
-
+  if( num_obs_lags > 0){
+    if(is.null(Yobslagmat)){stop("The function currently requires the user to input Yobslagmat when num_obs_lags > 0.")}
+    if(ncol(Yobslagmat) != num_obs_lags){stop("ncol(Yobslagmat) != num_obs_lags")}
+    if(nrow(Yobslagmat)!= nrow(X.train)){stop("nrow(Yobslagmat)!= nrow(X.train)")}
+  }
   if(nrow(X.train) != ncol(y.train)*nrow(y.train)){
     print("nrow(X.train) = ")
     print(nrow(X.train))
@@ -115,6 +125,25 @@ ARPbartX_FFBS_emptynodes <- function(y.train = NULL,
   num_indiv <- ncol(y.train)
   n.time_train <- nrow(y.train)
   num_total <- n.time_train*num_indiv
+
+
+  if (num_obs_lags > 0L) {
+    Yobslagmat <- as.matrix(Yobslagmat)
+    expected_rows <- n.time_train *num_indiv
+    if (nrow(Yobslagmat) !=expected_rows) {
+      stop(sprintf(paste0("Yobslagmat must have %d rows, one for each training observation; received %d rows."),expected_rows,nrow(Yobslagmat)))
+    }
+    if (ncol(Yobslagmat) != num_obs_lags) {
+      stop(sprintf(paste0("Yobslagmat must have %d columns; received %d columns."),num_obs_lags,ncol(Yobslagmat)))
+    }
+    if ( anyNA(Yobslagmat) || any(!is.finite(Yobslagmat)) || any(Yobslagmat != floor(Yobslagmat))) {
+      stop(paste0("Yobslagmat must contain finite, non-missing integer category indices."))
+    }
+    if (any(!Yobslagmat %in% c(0,1))) {
+      stop("Yobslagmat must contain 0 or 1")
+    }
+    storage.mode(Yobslagmat) <- "integer"
+  }
 
   ######## create output list to be filled in #########################
   draw = list(
@@ -281,7 +310,26 @@ ARPbartX_FFBS_emptynodes <- function(y.train = NULL,
     #must create predictions for future time periods using covariates for one period ahead, two periods ahead etc.
   }
 
-
+  if(num_obs_lags > 0 ){
+    Xmat.train <- data.frame(y = as.vector(Z.vec), x = cbind(Zlag.mat, X.train, Yobslagmat) )
+    Xmat.train.no.y <- cbind(Zlag.mat, X.train, Yobslagmat)
+    # if(num_obs_lags > num_lags){
+    if(nrow(X.test)>0 ){
+      Zlag.mat.test_for_obslags <- matrix(NA, nrow = num_test_periods*num_indiv, ncol = num_obs_lags)
+      for(t in 1:num_obs_lags){
+        if(num_test_periods > t ){
+          Zlag.mat.test_for_obslags[,t] <- c(Z.vec[((n.time_train-t)*num_indiv+1):(n.time_train*num_indiv)],
+                                             rep(Z.vec[((n.time_train-1)*num_indiv+1):(n.time_train*num_indiv)],
+                                                 (num_test_periods-t) )  )
+        }else{
+          Zlag.mat.test_for_obslags[,t] <- c(Z.vec[((n.time_train-t)*num_indiv+1):((n.time_train-(t - num_test_periods) )*num_indiv)]  )
+        }
+      }
+      # }
+      # Xmat.test  <- data.frame(x = cbind( Zlag.mat.test, X.test, 1*(Zlag.mat.test_for_obslags >0) ) )
+      Xmat.test  <- data.frame(x = cbind( Zlag.mat.test, X.test,1*(Zlag.mat.test_for_obslags > 0) ) )
+    }
+  }
 
 
   var_count = rep(0, ncol(Xmat.train.no.y))
@@ -347,7 +395,13 @@ ARPbartX_FFBS_emptynodes <- function(y.train = NULL,
   # colnames(temp_test_mat) <- colnames(df_for_dbart_test)
   temp_test_mat <- data.frame( x = as.matrix(Xmat.test[1:(num_indiv) , , drop=FALSE ]) ) #  matrix(NA, nrow = n.item*n.ranker,ncol = ncol(Xmat.test))
   colnames(temp_test_mat) <- colnames(Xmat.test)
-
+  if(num_obs_lags > 0 ){
+    obs_lag_state <- matrix(NA, nrow = num_indiv, ncol = num_obs_lags)
+    for(t in 1:num_obs_lags){
+      obs_lag_state[,t] <- c(Z.vec[((n.time_train-t)*num_indiv+1):((n.time_train-t+1)*num_indiv)]  )
+    }
+    temp_test_mat[, (ncol(temp_test_mat) - num_obs_lags + 1):ncol(temp_test_mat)] <- 1*(obs_lag_state >0)
+  }
 
   for(t1 in 1:num_test_periods){
     #produce a prediction
@@ -411,22 +465,57 @@ ARPbartX_FFBS_emptynodes <- function(y.train = NULL,
     #shift z columns to the right and fill in leftmost column
     #need to rewrite this if want to allow for no observed covariates
     if (t1 < num_test_periods) {
-      test_x_cols <- if (ncol(Xmat.test) > num_lags) {
-        seq.int(num_lags + 1L,ncol(Xmat.test))
+      test_x_cols <- if (ncol(Xmat.test) - num_obs_lags > num_lags) {
+        seq.int(num_lags + 1L,ncol(Xmat.test) - num_obs_lags)
       } else {
         integer(0)
       }
+      # if(num_lags ==1){
+      #   # temp_test_mat <-  data.frame(x =  cbind(  temp_test_preds[ , t1] ,
+      #   #                                           as.matrix(df_for_dbart_test[(t1-1)*(num_indiv)  +  1:(num_indiv), c(-1), drop=FALSE ] )))
+      #   temp_test_mat <-  data.frame(x =  cbind(  temp_test_preds[ , t1] ,
+      #                                             as.matrix(Xmat.test[(t1)*(num_indiv)  +  1:(num_indiv) ,test_x_cols, drop=FALSE ] )))
+      # }else{
+      #   print("num lags not equal to 1")
+      #   # temp_test_mat <-  data.frame(x =  cbind(  temp_test_preds[ , t1] , temp_test_mat[,1:(num_lags-1)] ,
+      #   #                                           as.matrix(df_for_dbart_test[(t1-1)*(num_indiv)  +  1:(num_indiv),c(-1), drop=FALSE ] )))
+      #   temp_test_mat <-  data.frame(x =  cbind(  temp_test_preds[ , t1] , temp_test_mat[,1:(num_lags-1)] ,
+      #                                             as.matrix(Xmat.test[(t1)*(num_indiv)  +  1:(num_indiv) ,test_x_cols, drop=FALSE ] )))
+      # }
+
+
       if(num_lags ==1){
-        # temp_test_mat <-  data.frame(x =  cbind(  temp_test_preds[ , t1] ,
-        #                                           as.matrix(df_for_dbart_test[(t1-1)*(num_indiv)  +  1:(num_indiv), c(-1), drop=FALSE ] )))
-        temp_test_mat <-  data.frame(x =  cbind(  temp_test_preds[ , t1] ,
-                                                  as.matrix(Xmat.test[(t1)*(num_indiv)  +  1:(num_indiv) ,test_x_cols, drop=FALSE ] )))
+        if(num_obs_lags > 0){
+          if(num_obs_lags ==1){
+            obs_lag_state <- temp_test_preds[ , t1, drop = FALSE]
+          }else{
+            obs_lag_state <- cbind(temp_test_preds[ , t1], obs_lag_state[,1:(num_obs_lags-1)])
+          }
+          temp_test_mat <-  data.frame(x =  cbind(  temp_test_preds[ , t1] ,
+                                                    as.matrix(Xmat.test[(t1)*(num_indiv)  +  1:(num_indiv) , test_x_cols, drop=FALSE]),
+                                                    1*(obs_lag_state>0)))
+        }else{
+          temp_test_mat <-  data.frame(x =  cbind(  temp_test_preds[ , t1] ,
+                                                    as.matrix(Xmat.test[(t1)*(num_indiv)  +  1:(num_indiv) , test_x_cols, drop=FALSE]) ))
+        }
+
       }else{
-        print("num lags not equal to 1")
-        # temp_test_mat <-  data.frame(x =  cbind(  temp_test_preds[ , t1] , temp_test_mat[,1:(num_lags-1)] ,
-        #                                           as.matrix(df_for_dbart_test[(t1-1)*(num_indiv)  +  1:(num_indiv),c(-1), drop=FALSE ] )))
-        temp_test_mat <-  data.frame(x =  cbind(  temp_test_preds[ , t1] , temp_test_mat[,1:(num_lags-1)] ,
-                                                  as.matrix(Xmat.test[(t1)*(num_indiv)  +  1:(num_indiv) ,test_x_cols, drop=FALSE ] )))
+
+        if(num_obs_lags > 0){
+          if(num_obs_lags ==1){
+            obs_lag_state <- temp_test_preds[ , t1, drop = FALSE]
+          }else{
+            obs_lag_state <- cbind(temp_test_preds[ , t1], obs_lag_state[,1:(num_obs_lags-1)])
+          }
+          temp_test_mat <-  data.frame(x =  cbind(  temp_test_preds[ , t1] ,
+                                                    temp_test_mat[,1:(num_lags-1)] ,
+                                                    as.matrix(Xmat.test[(t1)*(num_indiv)  +  1:(num_indiv) , test_x_cols, drop=FALSE]),
+                                                    1*(obs_lag_state >0)))
+        }else{
+          temp_test_mat <-  data.frame(x =  cbind(  temp_test_preds[ , t1] ,
+                                                    temp_test_mat[,1:(num_lags-1)] ,
+                                                    as.matrix(Xmat.test[(t1)*(num_indiv)  +  1:(num_indiv) , test_x_cols, drop=FALSE]) ))
+        }
       }
     }
     # if(t1 == num_test_periods){
@@ -1023,6 +1112,26 @@ ARPbartX_FFBS_emptynodes <- function(y.train = NULL,
       Xmat.test  <- data.frame(x = cbind( Zlag.mat.test, X.test ) )
       Xmat.test.no.y <- cbind( Zlag.mat.test, X.test )
     }
+    if(num_obs_lags > 0 ){
+      Xmat.train <- data.frame(y = as.vector(Z.vec), x = cbind(Zlag.mat, X.train, Yobslagmat) )
+      Xmat.train.no.y <- cbind(Zlag.mat, X.train, Yobslagmat)
+      # if(num_obs_lags > num_lags){
+      Zlag.mat.test_for_obslags <- matrix(NA, nrow = num_test_periods*num_indiv, ncol = num_obs_lags)
+      for(t in 1:num_obs_lags){
+        if(num_test_periods > t ){
+          Zlag.mat.test_for_obslags[,t] <- c(Z.vec[((n.time_train-t)*num_indiv+1):(n.time_train*num_indiv)],
+                                             rep(Z.vec[((n.time_train-1)*num_indiv+1):(n.time_train*num_indiv)],
+                                                 (num_test_periods-t) )  )
+        }else{
+          Zlag.mat.test_for_obslags[,t] <- c(Z.vec[((n.time_train-t)*num_indiv+1):((n.time_train-(t - num_test_periods) )*num_indiv)]  )
+        }
+      }
+      # }
+      if(nrow(X.test)>0 ){
+        # Xmat.test  <- data.frame(x = cbind( Zlag.mat.test, X.test, 1*(Zlag.mat.test_for_obslags >0) ) )
+        Xmat.test  <- data.frame(x = cbind( Zlag.mat.test, X.test, 1*(Zlag.mat.test_for_obslags >0) ) )
+      }
+    }
     # Must update node sizes for original tree # update all node sizes before new proposal
     for (j in 1:n.trees) {
       # print("curr_trees[[j]] = ")
@@ -1211,7 +1320,7 @@ ARPbartX_FFBS_emptynodes <- function(y.train = NULL,
         # print("line 2230")
         draw$Z.mat[,,iter_min_burnin] = Z.mat
         # print("line 2234")
-        draw$Z.mat.test[,,iter_min_burnin] = Z.mat.test
+        # draw$Z.mat.test[,,iter_min_burnin] = Z.mat.test
       }
       # draw$alpha[,iter_min_burnin] = alpha
       # draw$beta[,iter_min_burnin] = beta
@@ -1240,17 +1349,23 @@ ARPbartX_FFBS_emptynodes <- function(y.train = NULL,
           temp_test_mat[,t] <- Z.vec[((n.time_train-t)*num_indiv+1):((n.time_train-t +1)*num_indiv)]
         }
       }
-      # temp_test_mat[, (num_lags+1):ncol(Xmat.test)] <- as.matrix(Xmat.test[1:(n.item*n.ranker) ,
-      #                                                                      (num_lags+1):ncol(Xmat.test)])
 
-      test_x_cols <- if (ncol(Xmat.test) > num_lags) {
-        seq.int(num_lags + 1L,ncol(Xmat.test))
+      test_x_cols <- if (ncol(Xmat.test) - num_obs_lags > num_lags) {
+        seq.int(num_lags + 1L,ncol(Xmat.test) - num_obs_lags)
       } else {
         integer(0)
       }
-      if (length(test_x_cols) > 0L) {
-        temp_test_mat[, test_x_cols] <- as.matrix(Xmat.test[1:(num_indiv) , test_x_cols])
+      if(length(test_x_cols)>0){
+          temp_test_mat[, test_x_cols ] <- as.matrix(Xmat.test[1:(num_indiv), test_x_cols ])
       }
+      if(num_obs_lags > 0){
+        obs_lag_state <- matrix(NA, nrow = num_indiv, ncol =  num_obs_lags)
+        for(t1 in 1:num_obs_lags){
+          obs_lag_state[,t1] <- Z.vec[((n.time_train-t1)*num_indiv+1):((n.time_train-t1 +1)*num_indiv)]
+        }
+        temp_test_mat[, (ncol(temp_test_mat) - num_obs_lags + 1):(ncol(temp_test_mat))] <- 1*(obs_lag_state > 0)
+      }
+
       temp_test_mat <- data.frame(x = temp_test_mat)
       colnames(temp_test_mat) <- colnames(Xmat.test)
 
@@ -1267,7 +1382,7 @@ ARPbartX_FFBS_emptynodes <- function(y.train = NULL,
       for(t1 in 1:num_test_periods){
         #produce a prediction
         testpredvec = get_predictions(curr_trees, temp_test_mat, single_tree = n.trees == 1)
-        test_indices <-(t1 - 1L) * num_indiv +seq_len(num_indiv)
+        test_indices <- (t1 - 1L) * num_indiv +seq_len(num_indiv)
 
         #fill in temp_test_preds with noise
         if(noise_in_pred ==1){
@@ -1280,21 +1395,54 @@ ARPbartX_FFBS_emptynodes <- function(y.train = NULL,
         #need to rewrite this if want to allow for no observed covariates
         # temp_test_mat <-  data.frame( x= cbind(  temp_test_preds[ , t1] , temp_test_mat[,1:(num_lags-1)] ,Xmat.test[(t1-1)*(n.item*n.ranker)  +  1:(n.item*n.ranker) ,(num_lags+1):(ncol(Xmat.test))] ) )
         if(t1 != num_test_periods){
-          test_x_cols <- if (ncol(Xmat.test) > num_lags) {
-            seq.int(num_lags + 1L,ncol(Xmat.test))
+          test_x_cols <- if (ncol(Xmat.test) - num_obs_lags > num_lags) {
+            seq.int(num_lags + 1L,ncol(Xmat.test) - num_obs_lags)
           } else {
             integer(0)
           }
           # next_rows <- t1 * num_indiv + seq_len(num_indiv)
           # next_x <- Xmat.test[next_rows,test_x_cols,drop = FALSE]
           # temp_test_mat <- data.frame(x = cbind(temp_test_preds[, t1],next_x))
+          # if(num_lags ==1){
+          #   temp_test_mat <-  data.frame(x =  cbind(  temp_test_preds[ , t1] ,
+          #                                             as.matrix(Xmat.test[(t1)*(num_indiv)  +  1:(num_indiv) , test_x_cols]) ))
+          # }else{
+          #   temp_test_mat <-  data.frame(x =  cbind(  temp_test_preds[ , t1] ,
+          #                                             temp_test_mat[,1:(num_lags-1)] ,
+          #                                             as.matrix(Xmat.test[(t1)*(num_indiv)  +  1:(num_indiv) , test_x_cols]) ))
+          # }
           if(num_lags ==1){
-            temp_test_mat <-  data.frame(x =  cbind(  temp_test_preds[ , t1] ,
-                                                      as.matrix(Xmat.test[(t1)*(num_indiv)  +  1:(num_indiv) , test_x_cols]) ))
+            if(num_obs_lags > 0){
+              if(num_obs_lags ==1){
+                obs_lag_state <- temp_test_preds[ , t1, drop = FALSE]
+              }else{
+                obs_lag_state <- cbind(temp_test_preds[ , t1], obs_lag_state[,1:(num_obs_lags-1)])
+              }
+              temp_test_mat <-  data.frame(x =  cbind(  temp_test_preds[ , t1] ,
+                                                        as.matrix(Xmat.test[(t1)*(num_indiv)  +  1:(num_indiv) , test_x_cols, drop=FALSE]),
+                                                        1*(obs_lag_state>0)))
+            }else{
+              temp_test_mat <-  data.frame(x =  cbind(  temp_test_preds[ , t1] ,
+                                                        as.matrix(Xmat.test[(t1)*(num_indiv)  +  1:(num_indiv) , test_x_cols, drop=FALSE]) ))
+            }
+
           }else{
-            temp_test_mat <-  data.frame(x =  cbind(  temp_test_preds[ , t1] ,
-                                                      temp_test_mat[,1:(num_lags-1)] ,
-                                                      as.matrix(Xmat.test[(t1)*(num_indiv)  +  1:(num_indiv) , test_x_cols]) ))
+
+            if(num_obs_lags > 0){
+              if(num_obs_lags ==1){
+                obs_lag_state <- temp_test_preds[ , t1, drop = FALSE]
+              }else{
+                obs_lag_state <- cbind(temp_test_preds[ , t1], obs_lag_state[,1:(num_obs_lags-1)])
+              }
+              temp_test_mat <-  data.frame(x =  cbind(  temp_test_preds[ , t1] ,
+                                                        temp_test_mat[,1:(num_lags-1)] ,
+                                                        as.matrix(Xmat.test[(t1)*(num_indiv)  +  1:(num_indiv) , test_x_cols]),
+                                                        1*(obs_lag_state>0)))
+            }else{
+              temp_test_mat <-  data.frame(x =  cbind(  temp_test_preds[ , t1] ,
+                                                        temp_test_mat[,1:(num_lags-1)] ,
+                                                        as.matrix(Xmat.test[(t1)*(num_indiv)  +  1:(num_indiv) , test_x_cols]) ))
+            }
           }
         }
         # colnames(temp_test_mat) <- colnames(Xmat.test)

@@ -33,7 +33,9 @@ ARPbartX_fullcond_emptynodes(
   alpha_a = 0.5,
   alpha_b = 1,
   sigma_mu_prior = FALSE,
-  validate_rebuilt_trees = FALSE
+  validate_rebuilt_trees = FALSE,
+  num_obs_lags = 0,
+  Yobslagmat = NULL
 )
 }
 \arguments{

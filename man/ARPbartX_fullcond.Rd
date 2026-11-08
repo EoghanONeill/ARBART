@@ -28,7 +28,9 @@ ARPbartX_fullcond(
   probit_k = 2,
   reference_half_range = 3,
   max_lag_update_attempts = 10000L,
-  reject_or_restrict_Z_props = "restrict"
+  reject_or_restrict_Z_props = "restrict",
+  num_obs_lags = 0,
+  Yobslagmat = NULL
 )
 }
 \arguments{
