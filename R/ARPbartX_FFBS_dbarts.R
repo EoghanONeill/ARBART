@@ -539,52 +539,58 @@ ARPbartX_FFBS_dbarts <- function(y.train = NULL,
     #update temp_test_mat
     #shift z columns to the right and fill in leftmost column
     #need to rewrite this if want to allow for no observed covariates
-    # if (t1 < num_test_periods) {
-    #   if(num_lags ==1){
-    #     # temp_test_mat <-  data.frame(x =  cbind(  temp_test_preds[ , t1] ,
-    #     #                                           as.matrix(df_for_dbart_test[(t1-1)*(num_indiv)  +  1:(num_indiv), c(-1), drop=FALSE ] )))
-    #     temp_test_mat <-  data.frame(x =  cbind(  temp_test_preds[ , t1] ,
-    #                                               as.matrix(Xmat.test[(t1)*(num_indiv)  +  1:(num_indiv) ,(num_lags+1):(ncol(Xmat.test)), drop=FALSE ] )))
-    #   }else{
-    #     print("num lags not equal to 1")
-    #     # temp_test_mat <-  data.frame(x =  cbind(  temp_test_preds[ , t1] , temp_test_mat[,1:(num_lags-1)] ,
-    #     #                                           as.matrix(df_for_dbart_test[(t1-1)*(num_indiv)  +  1:(num_indiv),c(-1), drop=FALSE ] )))
-    #     temp_test_mat <-  data.frame(x =  cbind(  temp_test_preds[ , t1] , temp_test_mat[,1:(num_lags-1)] ,
-    #                                               as.matrix(Xmat.test[(t1)*(num_indiv)  +  1:(num_indiv) ,(num_lags+1):(ncol(Xmat.test)), drop=FALSE ] )))
-    #   }
-    # }
-
-    if(num_lags ==1){
-      if(num_obs_lags > 0){
-        if(num_obs_lags ==1){
-          obs_lag_state <- temp_test_preds[ , t1, drop = FALSE]
-        }else{
-          obs_lag_state <- cbind(temp_test_preds[ , t1], obs_lag_state[,1:(num_obs_lags-1)])
-        }
-        temp_test_mat <-  data.frame(x =  cbind(  temp_test_preds[ , t1] ,
-                                                  as.matrix(Xmat.test[(t1)*(num_indiv)  +  1:(num_indiv) , test_x_cols, drop=FALSE]),
-                                                  1*(obs_lag_state>0)))
-      }else{
-        temp_test_mat <-  data.frame(x =  cbind(  temp_test_preds[ , t1] ,
-                                                  as.matrix(Xmat.test[(t1)*(num_indiv)  +  1:(num_indiv) , test_x_cols, drop=FALSE]) ))
+    if (t1 < num_test_periods) {
+      test_x_cols <- if (ncol(Xmat.test) - num_obs_lags > num_lags) {
+        seq.int(num_lags + 1L,ncol(Xmat.test) - num_obs_lags)
+      } else {
+        integer(0)
       }
+      #   if(num_lags ==1){
+      #     # temp_test_mat <-  data.frame(x =  cbind(  temp_test_preds[ , t1] ,
+      #     #                                           as.matrix(df_for_dbart_test[(t1-1)*(num_indiv)  +  1:(num_indiv), c(-1), drop=FALSE ] )))
+      #     temp_test_mat <-  data.frame(x =  cbind(  temp_test_preds[ , t1] ,
+      #                                               as.matrix(Xmat.test[(t1)*(num_indiv)  +  1:(num_indiv) ,(num_lags+1):(ncol(Xmat.test)), drop=FALSE ] )))
+      #   }else{
+      #     print("num lags not equal to 1")
+      #     # temp_test_mat <-  data.frame(x =  cbind(  temp_test_preds[ , t1] , temp_test_mat[,1:(num_lags-1)] ,
+      #     #                                           as.matrix(df_for_dbart_test[(t1-1)*(num_indiv)  +  1:(num_indiv),c(-1), drop=FALSE ] )))
+      #     temp_test_mat <-  data.frame(x =  cbind(  temp_test_preds[ , t1] , temp_test_mat[,1:(num_lags-1)] ,
+      #                                               as.matrix(Xmat.test[(t1)*(num_indiv)  +  1:(num_indiv) ,(num_lags+1):(ncol(Xmat.test)), drop=FALSE ] )))
+      #   }
+      # }
 
-    }else{
-
-      if(num_obs_lags > 0){
-        if(num_obs_lags ==1){
-          obs_lag_state <- temp_test_preds[ , t1, drop = FALSE]
+      if(num_lags ==1){
+        if(num_obs_lags > 0){
+          if(num_obs_lags ==1){
+            obs_lag_state <- temp_test_preds[ , t1, drop = FALSE]
+          }else{
+            obs_lag_state <- cbind(temp_test_preds[ , t1], obs_lag_state[,1:(num_obs_lags-1)])
+          }
+          temp_test_mat <-  data.frame(x =  cbind(  temp_test_preds[ , t1] ,
+                                                    as.matrix(Xmat.test[(t1)*(num_indiv)  +  1:(num_indiv) , test_x_cols, drop=FALSE]),
+                                                    1*(obs_lag_state>0)))
         }else{
-          obs_lag_state <- cbind(temp_test_preds[ , t1], obs_lag_state[,1:(num_obs_lags-1)])
+          temp_test_mat <-  data.frame(x =  cbind(  temp_test_preds[ , t1] ,
+                                                    as.matrix(Xmat.test[(t1)*(num_indiv)  +  1:(num_indiv) , test_x_cols, drop=FALSE]) ))
         }
-        temp_test_mat <-  data.frame(x =  cbind(  temp_test_preds[ , t1] ,
-                                                  temp_test_mat[,1:(num_lags-1)] ,
-                                                  as.matrix(Xmat.test[(t1)*(num_indiv)  +  1:(num_indiv) , test_x_cols, drop=FALSE]),
-                                                  1*(obs_lag_state >0)))
+
       }else{
-        temp_test_mat <-  data.frame(x =  cbind(  temp_test_preds[ , t1] ,
-                                                  temp_test_mat[,1:(num_lags-1)] ,
-                                                  as.matrix(Xmat.test[(t1)*(num_indiv)  +  1:(num_indiv) , test_x_cols, drop=FALSE]) ))
+
+        if(num_obs_lags > 0){
+          if(num_obs_lags ==1){
+            obs_lag_state <- temp_test_preds[ , t1, drop = FALSE]
+          }else{
+            obs_lag_state <- cbind(temp_test_preds[ , t1], obs_lag_state[,1:(num_obs_lags-1)])
+          }
+          temp_test_mat <-  data.frame(x =  cbind(  temp_test_preds[ , t1] ,
+                                                    temp_test_mat[,1:(num_lags-1)] ,
+                                                    as.matrix(Xmat.test[(t1)*(num_indiv)  +  1:(num_indiv) , test_x_cols, drop=FALSE]),
+                                                    1*(obs_lag_state >0)))
+        }else{
+          temp_test_mat <-  data.frame(x =  cbind(  temp_test_preds[ , t1] ,
+                                                    temp_test_mat[,1:(num_lags-1)] ,
+                                                    as.matrix(Xmat.test[(t1)*(num_indiv)  +  1:(num_indiv) , test_x_cols, drop=FALSE]) ))
+        }
       }
     }
     # if(t1 == num_test_periods){
